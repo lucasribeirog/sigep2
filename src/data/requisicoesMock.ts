@@ -1,0 +1,48 @@
+import type { Requisicao } from '../types/requisicao';
+
+export const requisicoesMock: Requisicao[] = [
+  {
+    id: '1',
+    numero: '2026-0001245',
+    natureza: 'Análise audiovisual',
+    unidade: 'Seção Técnica de Perícias',
+    data: '10/07/2026',
+    status: 'Recebida',
+    solicitante: 'Autoridade policial',
+    procedimento: 'Inquérito Policial',
+    observacao: 'Requisição recebida e aguardando distribuição.',
+  },
+  {
+    id: '2',
+    numero: '2026-0001246',
+    natureza: 'Perícia em aparelho celular',
+    unidade: 'Instituto de Criminalística',
+    data: '09/07/2026',
+    status: 'Distribuída',
+    solicitante: 'Delegacia solicitante',
+    procedimento: 'Procedimento investigatório',
+    observacao: 'Material encaminhado para exame pericial.',
+  },
+  {
+    id: '3',
+    numero: '2026-0001247',
+    natureza: 'Exame de local',
+    unidade: 'Unidade Regional de Perícia',
+    data: '08/07/2026',
+    status: 'Em exame',
+    solicitante: 'Equipe de investigação',
+    procedimento: 'Ocorrência policial',
+    observacao: 'Exame em andamento.',
+  },
+  {
+    id: '4',
+    numero: '2026-0001248',
+    natureza: 'Análise de imagens',
+    unidade: 'Seção de Audiovisual',
+    data: '07/07/2026',
+    status: 'Concluída',
+    solicitante: 'Autoridade policial',
+    procedimento: 'Inquérito Policial',
+    observacao: 'Laudo finalizado e encaminhado.',
+  },
+];
