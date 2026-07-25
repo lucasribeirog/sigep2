@@ -1,32 +1,31 @@
 // src/services/laudoProcessor.js
 const processarEficienciaObjeto = require('./especies/eficienciaObjeto');
+const processarBalistica = require('./especies/balistica'); // <-- 1. Importa o processador de balística
 
 function prepararVariaveis(especie, dadosForm, perito) {
-    // Parse seguro dos dados que vieram como string no form-data
     const dados = typeof dadosForm === 'string' ? JSON.parse(dadosForm) : (dadosForm || {});
     const dadosPerito = typeof perito === 'string' ? JSON.parse(perito) : (perito || {});
 
-    // Variaveis universais que vão em todos os laudos (ex: nome do perito)
+    // Informações universais do perito (caso seu template use)
     let variaveisFinais = {
         perito_nome: dadosPerito.nome || '',
         perito_masp: dadosPerito.masp || '',
         perito_unidade: dadosPerito.unidade || ''
     };
 
-    // Direciona para a regra de negócio correta baseada no nome da espécie
+    // 2. Direciona com base no nome exato da espécie cadastrada
     switch (especie) {
         case 'Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem':
             const dadosObjeto = processarEficienciaObjeto(dados);
             variaveisFinais = { ...variaveisFinais, ...dadosObjeto };
             break;
 
-        // case 'Determinação de Calibre':
-        //     const dadosBalistica = processarBalistica(dados);
-        //     variaveisFinais = { ...variaveisFinais, ...dadosBalistica };
-        //     break;
+        case 'Eficiencia Armas de Fogo e/ou municoes': // Ajuste para o nome exato que está no seu catálogo/banco
+            const dadosBalistica = processarBalistica(dados);
+            variaveisFinais = { ...variaveisFinais, ...dadosBalistica };
+            break;
 
         default:
-            // Se não tiver processador específico ainda, manda os dados crus
             variaveisFinais = { ...variaveisFinais, ...dados };
             break;
     }
