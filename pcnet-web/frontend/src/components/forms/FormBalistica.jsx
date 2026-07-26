@@ -1,0 +1,214 @@
+import React from 'react';
+
+export default function FormBalistica({ form, onChange }) {
+    const setFieldValue = (name, value) => {
+        onChange({ target: { name, value, type: 'text' } });
+    };
+
+    const isMunicao = form.tipo_material === 'municao_isolada';
+    const isCoringa = form.tipo_material === 'coringa' || form.tipo_material === 'outro';
+
+    const handleMunicaoChange = (index, field, value) => {
+        const novasMunicoes = [...(form.municoes || [])];
+        novasMunicoes[index][field] = value;
+        onChange({ target: { name: 'municoes', value: novasMunicoes, type: 'array' } });
+    };
+
+    const adicionarMunicao = () => {
+        const novasMunicoes = [...(form.municoes || []), { quantidade: '', calibre: '', marca: '' }];
+        onChange({ target: { name: 'municoes', value: novasMunicoes, type: 'array' } });
+    };
+
+    const removerMunicao = (index) => {
+        const novasMunicoes = form.municoes.filter((_, i) => i !== index);
+        onChange({ target: { name: 'municoes', value: novasMunicoes, type: 'array' } });
+    };
+
+    return (
+        <div className="bg-gray-50 p-6 rounded-xl border border-gray-200 space-y-6">
+            
+            {/* DADOS BÁSICOS */}
+            <div>
+                <h3 className="text-md font-bold text-blue-900 border-b pb-2 mb-4">🎯 Dados Básicos</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Tipo de Material</label>
+                        <select name="tipo_material" value={form.tipo_material} onChange={onChange} className="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm">
+                            <option value="revolver">Revólver</option>
+                            <option value="pistola">Pistola</option>
+                            <option value="carabina">Carabina</option>
+                            <option value="fuzil">Fuzil</option>
+                            <option value="municao_isolada">Munição Isolada</option>
+                            <option value="coringa">Coringa / Outro (Livre)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Resultado do Exame</label>
+                        <select name="resultado_exame" value={form.resultado_exame} onChange={onChange} className="w-full p-2 border border-gray-300 rounded-lg bg-white text-sm">
+                            <option value="eficiente">Eficiente</option>
+                            <option value="ineficiente">Ineficiente</option>
+                            <option value="nao_calcou">Não Calçou</option>
+                            <option value="rajada">Rajada</option>
+                            <option value="municao_eficiente">Munição Eficiente</option>
+                            <option value="municao_ineficiente">Munição Ineficiente</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            {/* CORINGA */}
+            {isCoringa && (
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 space-y-4">
+                    <h3 className="text-md font-bold text-blue-900 border-b pb-2">🛠️ Especificação da Arma (Livre)</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-blue-900 mb-1">Nome da Arma</label>
+                            <input type="text" name="nome_arma_livre" value={form.nome_arma_livre} onChange={onChange} placeholder="Ex: garrucha artesanal" className="w-full p-2 border border-blue-200 rounded-md bg-white text-sm" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-blue-900 mb-1">Descrição / Acabamento</label>
+                            <input type="text" name="descricao_livre" value={form.descricao_livre} onChange={onChange} placeholder="Ex: coronha em madeira" className="w-full p-2 border border-blue-200 rounded-md bg-white text-sm" />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MUNIÇÃO ISOLADA OU ARMAS */}
+            {isMunicao ? (
+                <div className="bg-white p-4 rounded-xl border border-blue-200 space-y-4 shadow-sm">
+                    <div className="flex justify-between items-center border-b pb-2">
+                        <h3 className="text-md font-bold text-blue-900">📦 Lotes de Munições Encaminhadas</h3>
+                        <button type="button" onClick={adicionarMunicao} className="bg-blue-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-blue-700 transition">
+                            + Adicionar Outro Lote / Calibre
+                        </button>
+                    </div>
+
+                    {(form.municoes || []).map((mun, index) => (
+                        <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-gray-50 p-3 rounded-lg border border-gray-200">
+                            <div className="md:col-span-3">
+                                <label className="block text-[11px] font-semibold text-gray-600 mb-1">Quantidade</label>
+                                <input type="text" value={mun.quantidade} onChange={(e) => handleMunicaoChange(index, 'quantidade', e.target.value)} placeholder="Ex: 05 (cinco)" className="w-full p-2 border border-gray-300 rounded-md text-sm bg-white" />
+                            </div>
+                            <div className="md:col-span-4">
+                                <label className="block text-[11px] font-semibold text-gray-600 mb-1">Calibre</label>
+                                <input type="text" value={mun.calibre} onChange={(e) => handleMunicaoChange(index, 'calibre', e.target.value)} placeholder="Ex: .38 SPL" className="w-full p-2 border border-gray-300 rounded-md text-sm bg-white" />
+                            </div>
+                            <div className="md:col-span-4">
+                                <label className="block text-[11px] font-semibold text-gray-600 mb-1">Marca</label>
+                                <input type="text" value={mun.marca} onChange={(e) => handleMunicaoChange(index, 'marca', e.target.value)} placeholder="Ex: CBC" className="w-full p-2 border border-gray-300 rounded-md text-sm bg-white" />
+                            </div>
+                            <div className="md:col-span-1 flex justify-center">
+                                {form.municoes.length > 1 && (
+                                    <button type="button" onClick={() => removerMunicao(index)} className="bg-red-100 text-red-600 hover:bg-red-200 p-2 rounded-md text-xs font-bold transition w-full flex items-center justify-center">
+                                        ✕
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div>
+                    <h3 className="text-md font-bold text-blue-900 border-b pb-2 mb-4">📋 Identificação</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Calibre</label>
+                            <input type="text" name="calibre" value={form.calibre} onChange={onChange} placeholder="Ex: .40 S&W" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Marca</label>
+                            <input type="text" name="marca" value={form.marca} onChange={onChange} placeholder="Ex: Imbel" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Modelo</label>
+                            <input type="text" name="modelo" value={form.modelo} onChange={onChange} placeholder="Ex: não aparente" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1 flex justify-between">
+                                Número de Série
+                                <span className="space-x-1">
+                                    <button type="button" onClick={() => setFieldValue('numero_serie', 'Suprimido')} className="text-[10px] bg-red-100 text-red-700 px-1.5 py-0.5 rounded hover:bg-red-200">Suprimido</button>
+                                    <button type="button" onClick={() => setFieldValue('numero_serie', 'Não aparente')} className="text-[10px] bg-gray-200 text-gray-700 px-1.5 py-0.5 rounded hover:bg-gray-300">Não aparente</button>
+                                </span>
+                            </label>
+                            <input type="text" name="numero_serie" value={form.numero_serie} onChange={onChange} placeholder="Digite ou use os botões" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* MEDIDAS E CARACTERÍSTICAS (Apenas para Armas) */}
+            {!isMunicao && (
+                <div>
+                    <h3 className="text-md font-bold text-blue-900 border-b pb-2 mb-4">📏 Medidas e Características</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Comp. do Cano (mm)</label>
+                            <input type="number" name="comprimento_cano" value={form.comprimento_cano} onChange={onChange} placeholder="Ex: 60" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Comp. Total (mm)</label>
+                            <input type="number" name="comprimento_total" value={form.comprimento_total} onChange={onChange} placeholder="Ex: 180" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Acabamento</label>
+                            <input type="text" name="acabamento" value={form.acabamento} onChange={onChange} placeholder="Ex: oxidado" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-gray-600 mb-1">Capacidade (Tiros)</label>
+                            <input type="text" name="capacidade" value={form.capacidade} onChange={onChange} placeholder="Ex: 06" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                        </div>
+                    </div>
+
+                    <div className="mb-4 bg-white p-3 border border-gray-200 rounded-lg shadow-sm">
+                        <label className="block text-xs font-semibold text-gray-600 mb-2 flex items-center justify-between">
+                            Placas da Empunhadura
+                            <span className="space-x-1">
+                                <button type="button" onClick={() => setFieldValue('empunhadura_revolver', 'placas da empunhadura em borracha')} className="text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded hover:bg-blue-100 border border-blue-200">Borracha</button>
+                                <button type="button" onClick={() => setFieldValue('empunhadura_revolver', 'placas da empunhadura em madeira')} className="text-[10px] bg-amber-50 text-amber-700 px-2 py-1 rounded hover:bg-amber-100 border border-amber-200">Madeira</button>
+                                <button type="button" onClick={() => setFieldValue('empunhadura_revolver', 'placas da empunhadura em polímero')} className="text-[10px] bg-gray-100 text-gray-700 px-2 py-1 rounded hover:bg-gray-200 border border-gray-300">Polímero</button>
+                                <button type="button" onClick={() => setFieldValue('empunhadura_revolver', 'placas da empunhadura em plástico')} className="text-[10px] bg-gray-100 text-gray-700 px-2 py-1 rounded hover:bg-gray-200 border border-gray-300">Plástico</button>
+                            </span>
+                        </label>
+                        <input type="text" name="empunhadura_revolver" value={form.empunhadura_revolver} onChange={onChange} placeholder="Ex: placas da empunhadura em polímero" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50 focus:bg-white" />
+                    </div>
+                </div>
+            )}
+
+            {/* SITUAÇÃO E ENCAMINHAMENTO */}
+            <div>
+                <h3 className="text-md font-bold text-blue-900 border-b pb-2 mb-4">🚨 Situação e Encaminhamento</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label className="block text-xs font-semibold text-gray-600 mb-1">Nº do Lacre</label>
+                        <input type="text" name="n_lacre" value={form.n_lacre} onChange={onChange} placeholder="Ex: 998877" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                    </div>
+                    {form.resultado_exame === 'ineficiente' && (
+                        <div>
+                            <label className="block text-xs font-semibold text-red-700 mb-1">Defeito Constatado</label>
+                            <input type="text" name="defeito_constatado" value={form.defeito_constatado} onChange={onChange} placeholder="Ex: espoleta inoperante" className="w-full p-2 border border-red-300 rounded-lg text-sm bg-red-50" />
+                        </div>
+                    )}
+                </div>
+
+                {/* Exibição condicional: Só mostra o pertencente à PM se NÃO for munição isolada */}
+                {!isMunicao && (
+                    <div className="mt-4 p-4 bg-gray-100 rounded-lg border border-gray-200">
+                        <div className="flex items-center space-x-2 mb-3">
+                            <input type="checkbox" id="pertence_pm" name="pertence_pm" checked={form.pertence_pm} onChange={onChange} className="h-4 w-4 text-blue-600 rounded border-gray-400" />
+                            <label htmlFor="pertence_pm" className="text-sm font-semibold text-gray-800">Pertence à carga de Instituição?</label>
+                        </div>
+                        {form.pertence_pm && (
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-600 mb-1">Nome da Instituição</label>
+                                <input type="text" name="instituicao_carga" value={form.instituicao_carga} onChange={onChange} placeholder="Ex: Polícia Militar do Estado de Minas Gerais" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+            
+        </div>
+    );
+}

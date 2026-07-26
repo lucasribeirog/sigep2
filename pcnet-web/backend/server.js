@@ -4,6 +4,10 @@ const cors = require('cors');
 const authRoutes = require('./src/routes/authRoutes');
 const laudoRoutes = require('./src/routes/laudoRoutes');
 
+// 1. IMPORTAÇÕES DO SWAGGER
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./src/config/swagger');
+
 const app = express();
 
 app.use(express.json());
@@ -13,7 +17,11 @@ app.use(cors());
 app.use('/api', authRoutes);
 app.use('/api', laudoRoutes);
 
-const PORT = 3000;
+// 2. CADASTRO DA ROTA DO SWAGGER
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`🚀 Servidor rodando na intranet local na porta ${PORT}`);
+    console.log(`Servidor rodando na porta ${PORT}`);
+    console.log(`📄 Documentação Swagger ativa em: http://localhost:${PORT}/api-docs`);
 });
