@@ -43,14 +43,19 @@ function processarBalistica(dadosForm) {
         layout.is_encaminha_custodia = true;
     }
 
-    // FORMATAÇÃO INTELIGENTE DA LISTA DE MUNIÇÕES MÚLTIPLAS
+    // FORMATAÇÃO INTELIGENTE COM BASE NUMÉRICA (SINGULAR / PLURAL)
     let municoesDetalhes = '';
     if (Array.isArray(dadosForm.municoes) && dadosForm.municoes.length > 0) {
         const formatadas = dadosForm.municoes.map(m => {
-            const qtd = m.quantidade || '01 (um)';
+            const qtd = m.quantidade || 1;
+            const numQtd = parseInt(qtd, 10); // Converte para número real
             const cal = m.calibre || 'não especificado';
             const marc = m.marca || 'não aparente';
-            return `${qtd} cartuchos intactos, calibre ${cal}, marca ${marc}`;
+
+            // Se o número for exatamente 1, usa singular. Caso contrário, plural.
+            const termoCartucho = (numQtd === 1) ? 'cartucho intacto' : 'cartuchos intactos';
+
+            return `${qtd} ${termoCartucho}, calibre ${cal}, marca ${marc}`;
         });
 
         if (formatadas.length === 1) {
@@ -62,9 +67,9 @@ function processarBalistica(dadosForm) {
             municoesDetalhes = `${formatadas.join('; ')} e ${ultimo}`;
         }
     } else {
-        municoesDetalhes = '01 (um) cartucho intacto';
+        municoesDetalhes = '1 cartucho intacto';
     }
-
+    
     return {
         ...layout,
         calibre: dadosForm.calibre || '',

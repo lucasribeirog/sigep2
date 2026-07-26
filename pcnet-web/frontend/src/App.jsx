@@ -5,6 +5,7 @@ import GeradorLaudo from './components/GeradorLaudo';
 export default function App() {
     const [usuario, setUsuario] = useState(null);
     const [abaAtiva, setAbaAtiva] = useState('inicio'); // 'inicio' ou 'gerador'
+    const [especieSelecionada, setEspecieSelecionada] = useState(''); // <--- NOVO: guarda a espécie escolhida na home
 
     useEffect(() => {
         const usuarioSalvo = localStorage.getItem('usuario');
@@ -17,6 +18,12 @@ export default function App() {
         localStorage.removeItem('token');
         localStorage.removeItem('usuario');
         setUsuario(null);
+    };
+
+    // Função para navegar direto para a aba de laudo com uma espécie específica
+    const irParaLaudoComEspecie = (especie) => {
+        setEspecieSelecionada(especie);
+        setAbaAtiva('gerador');
     };
 
     if (!usuario) {
@@ -47,7 +54,7 @@ export default function App() {
             {/* Menu de Abas / Navegação Interna */}
             <nav className="bg-white border-b px-8 flex gap-6 shadow-xs">
                 <button
-                    onClick={() => setAbaAtiva('inicio')}
+                    onClick={() => { setEspecieSelecionada(''); setAbaAtiva('inicio'); }}
                     className={`py-3 text-sm font-semibold border-b-2 transition cursor-pointer ${
                         abaAtiva === 'inicio' 
                             ? 'border-blue-600 text-blue-600' 
@@ -81,7 +88,7 @@ export default function App() {
                                 </p>
                             </div>
                             <button
-                                onClick={() => setAbaAtiva('gerador')}
+                                onClick={() => irParaLaudoComEspecie('Eficiencia Armas de Fogo e/ou municoes')}
                                 className="mt-6 md:mt-0 bg-white text-blue-900 hover:bg-blue-50 font-bold px-6 py-3 rounded-xl shadow transition cursor-pointer text-sm"
                             >
                                 Iniciar Novo Laudo ➔
@@ -91,7 +98,7 @@ export default function App() {
                         {/* Atalhos Rápidos / Cards informativos */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                             <div 
-                                onClick={() => setAbaAtiva('gerador')}
+                                onClick={() => irParaLaudoComEspecie('Eficiencia Armas de Fogo e/ou municoes')}
                                 className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition cursor-pointer group"
                             >
                                 <div className="text-3xl mb-3">🎯</div>
@@ -100,7 +107,7 @@ export default function App() {
                             </div>
 
                             <div 
-                                onClick={() => setAbaAtiva('gerador')}
+                                onClick={() => irParaLaudoComEspecie('Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem')}
                                 className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:shadow-md transition cursor-pointer group"
                             >
                                 <div className="text-3xl mb-3">⚖️</div>
@@ -110,7 +117,7 @@ export default function App() {
                         </div>
                     </div>
                 ) : (
-                    <GeradorLaudo />
+                    <GeradorLaudo especieInicial={especieSelecionada} />
                 )}
             </main>
         </div>

@@ -1,4 +1,60 @@
-import React from 'react';
+import React, { useState } from 'react';
+
+// Componente reutilizável de Input com Sugestões Visíveis e Filtráveis
+function InputComSugestoes({ label, value, onChange, sugestoes, placeholder, rightElement }) {
+    const [aberto, setAberto] = useState(false);
+    const sugestoesFiltradas = sugestoes.filter(s => 
+        s.toLowerCase().includes((value || '').toLowerCase())
+    );
+
+    return (
+        <div className="relative">
+            {label && (
+                <div className="block text-xs font-semibold text-gray-600 mb-1 flex justify-between items-center">
+                    <span>{label}</span>
+                    {rightElement}
+                </div>
+            )}
+            <div className="relative flex items-center">
+                <input 
+                    type="text"
+                    value={value || ''}
+                    onChange={(e) => onChange(e.target.value)}
+                    onFocus={() => setAberto(true)}
+                    onBlur={() => setTimeout(() => setAberto(false), 200)}
+                    placeholder={placeholder}
+                    className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white pr-8 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                />
+                <button 
+                    type="button"
+                    onClick={() => setAberto(!aberto)}
+                    className="absolute right-2 text-gray-400 hover:text-gray-600 focus:outline-none px-1 text-xs"
+                    title="Ver opções comuns"
+                >
+                    ▼
+                </button>
+            </div>
+
+            {aberto && sugestoesFiltradas.length > 0 && (
+                <ul className="absolute z-50 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-48 overflow-y-auto text-sm">
+                    {sugestoesFiltradas.map((item, idx) => (
+                        <li 
+                            key={idx}
+                            onMouseDown={(e) => {
+                                e.preventDefault(); // Evita que o blur feche antes do clique
+                                onChange(item);
+                                setAberto(false);
+                            }}
+                            className="px-3 py-2 hover:bg-blue-50 cursor-pointer text-gray-700 border-b border-gray-50 last:border-none"
+                        >
+                            {item}
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
 
 export default function FormBalistica({ form, onChange }) {
     const setFieldValue = (name, value) => {
@@ -8,6 +64,11 @@ export default function FormBalistica({ form, onChange }) {
     const isMunicao = form.tipo_material === 'municao_isolada';
     const isCoringa = form.tipo_material === 'coringa' || form.tipo_material === 'outro';
 
+    // Listas de sugestões periciais comuns
+    const LISTA_CALIBRES = ['.38 SPL', '.380 Auto', '9mm Luger', '.40 S&W', '.45 ACP', '.357 Magnum', '12 GA', '.22 Long Rifle', '7.62x39mm', '5.56x45mm NATO'];
+    const LISTA_MARCAS = ['Taurus', 'CBC', 'Glock', 'Imbel', 'Beretta', 'Rossi', 'Smith & Wesson', 'CZ', 'Remington', 'Colt'];
+    const LISTA_MODELOS = ['não aparente', 'RT 82', 'RT 85', 'G2C', 'G3', 'MD1', 'PT 940', 'PT 100'];
+
     const handleMunicaoChange = (index, field, value) => {
         const novasMunicoes = [...(form.municoes || [])];
         novasMunicoes[index][field] = value;
@@ -15,7 +76,7 @@ export default function FormBalistica({ form, onChange }) {
     };
 
     const adicionarMunicao = () => {
-        const novasMunicoes = [...(form.municoes || []), { quantidade: '', calibre: '', marca: '' }];
+        const novasMunicoes = [...(form.municoes || []), { quantidade: 1, calibre: '', marca: '' }];
         onChange({ target: { name: 'municoes', value: novasMunicoes, type: 'array' } });
     };
 
@@ -88,15 +149,32 @@ export default function FormBalistica({ form, onChange }) {
                         <div key={index} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-gray-50 p-3 rounded-lg border border-gray-200">
                             <div className="md:col-span-3">
                                 <label className="block text-[11px] font-semibold text-gray-600 mb-1">Quantidade</label>
-                                <input type="text" value={mun.quantidade} onChange={(e) => handleMunicaoChange(index, 'quantidade', e.target.value)} placeholder="Ex: 05 (cinco)" className="w-full p-2 border border-gray-300 rounded-md text-sm bg-white" />
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    value={mun.quantidade} 
+                                    onChange={(e) => handleMunicaoChange(index, 'quantidade', e.target.value)} 
+                                    placeholder="Ex: 1" 
+                                    className="w-full p-2 border border-gray-300 rounded-md text-sm bg-white" 
+                                />
                             </div>
                             <div className="md:col-span-4">
-                                <label className="block text-[11px] font-semibold text-gray-600 mb-1">Calibre</label>
-                                <input type="text" value={mun.calibre} onChange={(e) => handleMunicaoChange(index, 'calibre', e.target.value)} placeholder="Ex: .38 SPL" className="w-full p-2 border border-gray-300 rounded-md text-sm bg-white" />
+                                <InputComSugestoes 
+                                    label="Calibre"
+                                    value={mun.calibre}
+                                    onChange={(val) => handleMunicaoChange(index, 'calibre', val)}
+                                    sugestoes={LISTA_CALIBRES}
+                                    placeholder="Ex: .38 SPL"
+                                />
                             </div>
                             <div className="md:col-span-4">
-                                <label className="block text-[11px] font-semibold text-gray-600 mb-1">Marca</label>
-                                <input type="text" value={mun.marca} onChange={(e) => handleMunicaoChange(index, 'marca', e.target.value)} placeholder="Ex: CBC" className="w-full p-2 border border-gray-300 rounded-md text-sm bg-white" />
+                                <InputComSugestoes 
+                                    label="Marca"
+                                    value={mun.marca}
+                                    onChange={(val) => handleMunicaoChange(index, 'marca', val)}
+                                    sugestoes={LISTA_MARCAS}
+                                    placeholder="Ex: CBC"
+                                />
                             </div>
                             <div className="md:col-span-1 flex justify-center">
                                 {form.municoes.length > 1 && (
@@ -113,16 +191,31 @@ export default function FormBalistica({ form, onChange }) {
                     <h3 className="text-md font-bold text-blue-900 border-b pb-2 mb-4">📋 Identificação</h3>
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                         <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Calibre</label>
-                            <input type="text" name="calibre" value={form.calibre} onChange={onChange} placeholder="Ex: .40 S&W" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                            <InputComSugestoes 
+                                label="Calibre"
+                                value={form.calibre}
+                                onChange={(val) => setFieldValue('calibre', val)}
+                                sugestoes={LISTA_CALIBRES}
+                                placeholder="Ex: .40 S&W"
+                            />
                         </div>
                         <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Marca</label>
-                            <input type="text" name="marca" value={form.marca} onChange={onChange} placeholder="Ex: Imbel" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                            <InputComSugestoes 
+                                label="Marca"
+                                value={form.marca}
+                                onChange={(val) => setFieldValue('marca', val)}
+                                sugestoes={LISTA_MARCAS}
+                                placeholder="Ex: Imbel"
+                            />
                         </div>
                         <div>
-                            <label className="block text-xs font-semibold text-gray-600 mb-1">Modelo</label>
-                            <input type="text" name="modelo" value={form.modelo} onChange={onChange} placeholder="Ex: não aparente" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white" />
+                            <InputComSugestoes 
+                                label="Modelo"
+                                value={form.modelo}
+                                onChange={(val) => setFieldValue('modelo', val)}
+                                sugestoes={LISTA_MODELOS}
+                                placeholder="Ex: não aparente"
+                            />
                         </div>
                         <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1 flex justify-between">
@@ -192,7 +285,6 @@ export default function FormBalistica({ form, onChange }) {
                     )}
                 </div>
 
-                {/* Exibição condicional: Só mostra o pertencente à PM se NÃO for munição isolada */}
                 {!isMunicao && (
                     <div className="mt-4 p-4 bg-gray-100 rounded-lg border border-gray-200">
                         <div className="flex items-center space-x-2 mb-3">

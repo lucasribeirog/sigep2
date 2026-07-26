@@ -3,8 +3,8 @@ import api from '../api/pcnet';
 import FormBalistica from './forms/FormBalistica';
 import FormPatrimonio from './forms/FormPatrimonio';
 
-export default function GeradorLaudo() {
-    const [especie, setEspecie] = useState('');
+export default function GeradorLaudo({ especieInicial = '' }) {
+    const [especie, setEspecie] = useState(especieInicial);
     const [arquivoPcnet, setArquivoPcnet] = useState(null);
     const [loading, setLoading] = useState(false);
 
