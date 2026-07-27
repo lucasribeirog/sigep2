@@ -58,7 +58,7 @@ export default function FormPatrimonio({ form, onChange }) {
     const LISTA_MARCAS = ['Tramontina', 'Tramontina Century', 'Inox', 'Corneta', 'Stainless', 'Não aparente'];
     const LISTA_MATERIAIS = ['plástico', 'madeira', 'polímero', 'borracha', 'metal', 'alumínio'];
     const LISTA_CORES = ['preto', 'marrom', 'prateado', 'branco', 'vermelho', 'amarelo'];
-    const LISTA_ABERTURAS = ['manual', 'Assistida (Semiautomática)', 'Automática', 'Flipper'];
+    const LISTA_ABERTURAS = ['acionamento manual', 'ação assistida (semiautomática)','ação automática', 'sistema flipper'];
 
     const tipo = form.tipo_objeto;
 

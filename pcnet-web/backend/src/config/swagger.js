@@ -5,7 +5,7 @@ const swaggerDocument = {
   info: {
     title: 'PCNet - API do Sistema Pericial',
     version: '1.0.0',
-    description: 'Documentação interativa das rotas do backend (Autenticação e Geração de Laudos).',
+    description: 'Documentação interativa das rotas do backend (Autenticação, Análise Pericial e Geração de Laudos).',
   },
   servers: [
     {
@@ -134,6 +134,64 @@ const swaggerDocument = {
         },
         responses: {
           200: { description: 'Template salvo no banco de dados.' },
+        },
+      },
+    },
+    '/analisar-foto': {
+      post: {
+        tags: ['Laudos (Geração)'],
+        summary: 'Analisar foto do vestígio com régua de escala',
+        description: 'Recebe a imagem da arma/objeto ao lado da régua de escala pericial, extrai os parâmetros visuais/dimensões e retorna o JSON estruturado para pré-preencher o formulário.',
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  foto_objeto: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'Imagem do vestígio fotografado com a régua de escala pericial.',
+                  },
+                  especie: {
+                    type: 'string',
+                    description: '(Opcional) Espécie do objeto para direcionar a análise.',
+                    example: 'arma de fogo',
+                  },
+                },
+                required: ['foto_objeto'],
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: 'Análise concluída com sucesso. Retorna os dados extraídos para o formulário.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    mensagem: { type: 'string', example: 'Imagem analisada com sucesso via escala pericial!' },
+                    dadosForm: {
+                      type: 'object',
+                      properties: {
+                        especie: { type: 'string', example: 'arma de fogo' },
+                        marca: { type: 'string', example: 'Taurus' },
+                        calibre: { type: 'string', example: '9mm' },
+                        acabamento: { type: 'string', example: 'Oxidado' },
+                        comprimento_total_mm: { type: 'string', example: '180mm' },
+                      },
+                    },
+                    imagemProcessadaBase64: { type: 'string', example: 'data:image/jpeg;base64,...' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Nenhuma imagem enviada.' },
+          500: { description: 'Erro interno durante a análise da imagem pericial.' },
         },
       },
     },

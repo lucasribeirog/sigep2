@@ -1,0 +1,14 @@
+# Dependências
+node_modules/
+
+# Variáveis de ambiente (onde fica a chave secreta da Groq/API)
+.env
+.env.local
+
+# Logs de erro
+*.log
+npm-debug.log*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db

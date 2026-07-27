@@ -3,29 +3,28 @@ import api from '../api/pcnet';
 import FormBalistica from './forms/FormBalistica';
 import FormPatrimonio from './forms/FormPatrimonio';
 
-export default function GeradorLaudo({ especieInicial = '' }) {
+export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = null, fotoObjetoInicial = null }) {
     const [especie, setEspecie] = useState(especieInicial);
     const [arquivoPcnet, setArquivoPcnet] = useState(null);
+    const [fotoObjeto] = useState(fotoObjetoInicial); // Mantém a foto que veio do modal (se houver)
     const [loading, setLoading] = useState(false);
 
-    // Estado unificado com todas as chaves esperadas pelos services do backend
     const [form, setForm] = useState({
-        // === BALÍSTICA ===
-        tipo_material: 'revolver',
+        tipo_material: dadosIniciaisIA?.tipo_material || 'revolver',
         pertence_pm: false,
         instituicao_carga: 'Polícia Militar do Estado de Minas Gerais',
         resultado_exame: 'eficiente',
         destino: 'custodia',
-        calibre: '',
-        marca: '',
-        modelo: '',
+        calibre: dadosIniciaisIA?.calibre || '',
+        marca: dadosIniciaisIA?.marca || '',
+        modelo: dadosIniciaisIA?.modelo || '',
         numero_serie: '',
-        acabamento: 'oxidado',
-        comprimento_cano: '',
-        comprimento_total: '',
+        acabamento: dadosIniciaisIA?.acabamento || 'oxidado',
+        comprimento_cano: dadosIniciaisIA?.comprimento_cano || '',
+        comprimento_total: dadosIniciaisIA?.comprimento_total || '',
         capacidade: '',
         n_lacre: '',
-        municoes: [{ quantidade: '', calibre: '', marca: '' }], // <--- ADICIONADO AQUI
+        municoes: [{ quantidade: dadosIniciaisIA?.qtd_municao || '', calibre: dadosIniciaisIA?.calibre || '', marca: dadosIniciaisIA?.marca || '' }],
         defeito_constatado: 'mecanismo de disparo emperrado',
         tipo_acao_carabina: 'repetição (não automática)',
         detalhes_coronha: 'coronha e telha em madeira',
@@ -34,11 +33,9 @@ export default function GeradorLaudo({ especieInicial = '' }) {
         carregador_info: 'acompanhada de um carregador compatível',
         detalhes_armacao: '',
         detalhes_fuzil: 'coronha rebatível e empunhadura em polímero',
-        qtd_municao: '02 (dois)',
+        qtd_municao: dadosIniciaisIA?.qtd_municao || '02 (dois)',
         nome_arma_livre: '',
         descricao_livre: '',
-
-        // === PATRIMÔNIO (Eficiência de Objeto) ===
         tipo_objeto: 'faca',
         resultado_eficiencia: 'eficiente',
         n_fav: '',
@@ -70,15 +67,9 @@ export default function GeradorLaudo({ especieInicial = '' }) {
         });
     };
 
-    const handleFileChange = (e) => {
-        setArquivoPcnet(e.target.files[0]);
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        
+    const handleSubmeterLaudo = async (formatoDesejado) => {
         if (!especie || !arquivoPcnet) {
-            alert('Por favor, selecione a espécie e o arquivo .docx original.');
+            alert('Por favor, selecione a espécie e o arquivo .docx original do PCNet.');
             return;
         }
 
@@ -87,47 +78,31 @@ export default function GeradorLaudo({ especieInicial = '' }) {
         formData.append('especie', especie);
         formData.append('dadosForm', JSON.stringify(form));
 
+        // Se colocou a foto no modal (seja para IA ou manual), ela vai na requisição!
+        if (fotoObjeto) {
+            formData.append('foto_objeto', fotoObjeto);
+        }
+
+        const rotaEndpoint = formatoDesejado === 'pdf' ? '/gerar-laudo-pdf' : '/gerar-laudo';
+        const mimetypeRetorno = formatoDesejado === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
         try {
             setLoading(true);
-            const response = await api.post('/gerar-laudo', formData, { responseType: 'blob' });
+            const response = await api.post(rotaEndpoint, formData, { responseType: 'blob' });
 
-            const fileName = arquivoPcnet ? arquivoPcnet.name : 'laudo_oficial.docx';
+            const extensao = formatoDesejado === 'pdf' ? 'pdf' : 'docx';
+            const fileName = arquivoPcnet ? arquivoPcnet.name.replace(/\.[^/.]+$/, `.${extensao}`) : `laudo_oficial.${extensao}`;
 
-            const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+            const blob = new Blob([response.data], { type: mimetypeRetorno });
             const link = document.createElement('a');
             link.href = window.URL.createObjectURL(blob);
             link.download = fileName;
             link.click();
 
-            const nomeEspecieExibicao = especie.includes('Arma') ? 'Balística' : 'Patrimônio';
-            const novoHistorico = {
-                id: Date.now(),
-                especie: nomeEspecieExibicao,
-                data: new Date().toLocaleString('pt-BR'),
-                arquivo: fileName,
-                status: 'Concluído'
-            };
-            const historicoAntigo = JSON.parse(localStorage.getItem('historico_laudos') || '[]');
-            localStorage.setItem('historico_laudos', JSON.stringify([novoHistorico, ...historicoAntigo]));
-
-            alert('Laudo gerado e baixado com sucesso!');
+            alert(`Laudo em ${extensao.toUpperCase()} gerado com sucesso!`);
         } catch (error) {
             console.error('Erro ao gerar laudo:', error);
-            
-            if (error.response && error.response.data instanceof Blob) {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    try {
-                        const resJson = JSON.parse(reader.result);
-                        alert('Erro do Servidor: ' + (resJson.erro || JSON.stringify(resJson)));
-                    } catch (e) {
-                        alert('Erro ao processar o laudo no servidor.');
-                    }
-                };
-                reader.readAsText(error.response.data);
-            } else {
-                alert('Erro: ' + (error.response?.data?.erro || error.message));
-            }
+            alert('Erro ao processar o laudo no servidor.');
         } finally {
             setLoading(false);
         }
@@ -135,14 +110,19 @@ export default function GeradorLaudo({ especieInicial = '' }) {
 
     return (
         <div className="max-w-4xl mx-auto p-8 bg-white shadow-lg rounded-xl border border-gray-100">
-            <div className="mb-8 border-b pb-4">
-                <h2 className="text-2xl font-bold text-gray-800">Elaboração e Emissão de Laudos</h2>
-                <p className="text-sm text-gray-500 mt-1">Preencha os dados periciais para injeção automática no modelo do PCNet.</p>
+            <div className="mb-8 border-b pb-4 flex justify-between items-center">
+                <div>
+                    <h2 className="text-2xl font-bold text-gray-800">Elaboração e Emissão de Laudos</h2>
+                    <p className="text-sm text-gray-500 mt-1">Preencha os dados periciais para injeção automática no modelo do PCNet.</p>
+                </div>
+                {fotoObjeto && (
+                    <span className="bg-sky-50 text-sky-700 text-xs font-semibold px-3 py-1.5 rounded-full border border-sky-200">
+                        📷 Foto Vinculada (Modo com Foto)
+                    </span>
+                )}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-                
-                {/* 1. SELEÇÃO DA ESPÉCIE */}
+            <form onSubmit={(e) => e.preventDefault()} className="space-y-6">
                 <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Espécie Pericial</label>
                     <select 
@@ -157,39 +137,46 @@ export default function GeradorLaudo({ especieInicial = '' }) {
                     </select>
                 </div>
 
-                {/* 2. UPLOAD DO ARQUIVO .DOCX DO PCNET */}
                 <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-2">Documento Base do PCNet (.docx)</label>
                     <input 
                         type="file" 
                         accept=".docx" 
-                        onChange={handleFileChange}
+                        onChange={(e) => setArquivoPcnet(e.target.files[0])}
                         className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
                         required
                     />
                 </div>
 
-                {/* 3A. FORMULÁRIO DE BALÍSTICA (Renderiza o componente isolado) */}
                 {especie === 'Eficiencia Armas de Fogo e/ou municoes' && (
                     <FormBalistica form={form} onChange={handleChange} />
                 )}
 
-                {/* 3B. FORMULÁRIO DE PATRIMÔNIO (Renderiza o componente isolado) */}
                 {especie === 'Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem' && (
                     <FormPatrimonio form={form} onChange={handleChange} />
                 )}
 
-                {/* BOTÃO DE AÇÃO */}
                 {especie && (
-                    <button 
-                        type="submit" 
-                        disabled={loading}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold p-3.5 rounded-lg transition shadow-md disabled:bg-gray-400 cursor-pointer"
-                    >
-                        {loading ? 'Processando Documento no Servidor...' : 'Gerar e Baixar Laudo Oficial'}
-                    </button>
-                )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+                        <button 
+                            type="button"
+                            onClick={() => handleSubmeterLaudo('docx')}
+                            disabled={loading}
+                            className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold p-3.5 rounded-lg transition shadow-xs disabled:bg-gray-300 cursor-pointer flex items-center justify-center gap-2 text-sm"
+                        >
+                            {loading ? 'Processando...' : '📄 Baixar Word (.docx)'}
+                        </button>
 
+                        <button 
+                            type="button"
+                            onClick={() => handleSubmeterLaudo('pdf')}
+                            disabled={loading}
+                            className="bg-[#0284C7] hover:bg-[#0284C7]/90 text-white font-semibold p-3.5 rounded-lg transition shadow-md disabled:bg-gray-400 cursor-pointer flex items-center justify-center gap-2 text-sm"
+                        >
+                            {loading ? 'Convertendo via LibreOffice...' : '📑 Baixar PDF Oficial (.pdf)'}
+                        </button>
+                    </div>
+                )}
             </form>
         </div>
     );
