@@ -68,6 +68,11 @@ export default function FormBalistica({ form, onChange }) {
     const LISTA_CALIBRES = ['.38 SPL', '.380 Auto', '9mm Luger', '.40 S&W', '.45 ACP', '.357 Magnum', '12 GA', '.22 Long Rifle', '7.62x39mm', '5.56x45mm NATO'];
     const LISTA_MARCAS = ['Taurus', 'CBC', 'Glock', 'Imbel', 'Beretta', 'Rossi', 'Smith & Wesson', 'CZ', 'Remington', 'Colt'];
     const LISTA_MODELOS = ['não aparente', 'RT 82', 'RT 85', 'G2C', 'G3', 'MD1', 'PT 940', 'PT 100'];
+    
+    // Novas listas para Carabina
+    const LISTA_ACOES_CARABINA = ['repetição (não automática)', 'semiautomática', 'ação por ferrolho (bolt-action)', 'ação por alavanca (lever-action)', 'ação por bomba (pump-action)'];
+    const LISTA_CORONHAS = ['coronha e telha em madeira', 'coronha em polímero preto', 'coronha rebatível em metal', 'coronha telescópica em polímero'];
+    const LISTA_SISTEMA_ALIMENTACAO = ['sistema próprio', 'carregador tubular', 'carregador destacável', 'carregador fixo'];
 
     const handleMunicaoChange = (index, field, value) => {
         const novasMunicoes = [...(form.municoes || [])];
@@ -295,6 +300,42 @@ export default function FormBalistica({ form, onChange }) {
                                         onChange={onChange} 
                                         placeholder="Ex: desprovida de carregador" 
                                         className="w-full p-2 border border-blue-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" 
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* BLOCO NOVO: ESPECÍFICO PARA CARABINAS (COM SUGESTÕES) */}
+                    {form.tipo_material === 'carabina' && (
+                        <div className="mb-4 bg-green-50 p-4 border border-green-100 rounded-lg shadow-sm">
+                            <h4 className="text-sm font-bold text-green-900 mb-3">Detalhes da Carabina</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div>
+                                    <InputComSugestoes 
+                                        label="Tipo de Ação"
+                                        value={form.tipo_acao_carabina}
+                                        onChange={(val) => setFieldValue('tipo_acao_carabina', val)}
+                                        sugestoes={LISTA_ACOES_CARABINA}
+                                        placeholder="Ex: repetição (não automática)"
+                                    />
+                                </div>
+                                <div>
+                                    <InputComSugestoes 
+                                        label="Detalhes da Coronha"
+                                        value={form.detalhes_coronha}
+                                        onChange={(val) => setFieldValue('detalhes_coronha', val)}
+                                        sugestoes={LISTA_CORONHAS}
+                                        placeholder="Ex: coronha e telha em madeira"
+                                    />
+                                </div>
+                                <div>
+                                    <InputComSugestoes 
+                                        label="Sistema de Alimentação"
+                                        value={form.sistema_alimentacao}
+                                        onChange={(val) => setFieldValue('sistema_alimentacao', val)}
+                                        sugestoes={LISTA_SISTEMA_ALIMENTACAO}
+                                        placeholder="Ex: sistema próprio"
                                     />
                                 </div>
                             </div>

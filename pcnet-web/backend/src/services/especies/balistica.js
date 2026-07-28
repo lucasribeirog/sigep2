@@ -4,17 +4,20 @@ const { GoogleGenAI } = require('@google/genai');
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function extrairDadosArmaViaIA(caminhoImagem) {
-    const prompt = `Você é um Perito Criminal assistente. Analise a fotografia do vestígio balístico e extraia os dados técnicos. 
+    const prompt = `Você é um Perito Criminal assistente. Analise a fotografia do vestígio balístico e extraia os dados técnicos com precisão cirúrgica. 
     Retorne estritamente um JSON válido contendo exatamente estas chaves:
     - "tipo_material": (Retorne EXATAMENTE UMA destas opções, em minúsculo e sem acento: "revolver", "pistola", "carabina", "fuzil", "municao_isolada" ou "coringa")
     - "marca": (Identifique a marca fabricante observada ou deduzida; se inconclusiva, informe "não aparente")
     - "modelo": (Identifique o modelo, se possível)
     - "calibre": (Calibre aparente, gravado ou estimado)
-    - "capacidade": (Apenas o número de tiros que o armamento comporta, ex: 15)
-    - "acabamento": (Descrição livre do estado da superfície e coloração)
+    - "capacidade": (Apenas o número de tiros que o armamento comporta, ex: 6)
+    - "acabamento": (Apenas o tratamento superficial e coloração do metal, ex: "oxidado negro", "pintado de preto", "inoxidável". NUNCA inclua detalhes de coronha ou empunhadura aqui)
     - "empunhadura_revolver": (Descreva o material das placas da empunhadura, se houver)
     - "detalhes_armacao": (Se for pistola, descreva o material da armação, ex: "polímero preto" ou "duralumínio". Senão, deixe vazio)
     - "carregador_info": (Se for pistola, informe se possui carregador visível, ex: "acompanhada de um carregador compatível" ou "desprovida de carregador". Senão, deixe vazio)
+    - "tipo_acao_carabina": (Se carabina, informe o tipo de ação aparente, ex: "repetição (não automática)")
+    - "detalhes_coronha": (Se carabina ou fuzil, descreva o material, ex: "coronha e telha em madeira")
+    - "sistema_alimentacao": (Se carabina, descreva como é alimentada, ex: "sistema próprio" ou "carregador tubular")
     - "qtd_municao": (Apenas o número inteiro de munições soltas, ex: 0)
     - "comprimento_total": (Apenas o número em milímetros, ex: 170)
     - "comprimento_cano": (Apenas o número em milímetros, ex: 75)`;
@@ -123,6 +126,14 @@ function processarBalistica(dadosForm) {
         municoesDetalhes = `${fallbackQtd} ${termoFallback}, calibre ${fallbackCal}, marca ${fallbackMarc}`;
     }
     
+    // Tratamento seguro para a capacidade (evita "undefined" se o campo estiver vazio)
+    const capVal = dadosForm.capacidade;
+    let capacidadeFormatada = 'não informada';
+    if (capVal !== undefined && capVal !== null && String(capVal).trim() !== '') {
+        const capNum = parseInt(capVal, 10);
+        capacidadeFormatada = (capNum === 1) ? '1 (um) tiro' : `${capVal} tiros`;
+    }
+
     return {
         ...layout,
         calibre: dadosForm.calibre || '',
@@ -133,6 +144,7 @@ function processarBalistica(dadosForm) {
         comprimento_cano: dadosForm.comprimento_cano || '',
         comprimento_total: dadosForm.comprimento_total || '',
         capacidade: dadosForm.capacidade || '',
+        capacidade_texto: capacidadeFormatada,
         n_lacre: dadosForm.n_lacre || '',
         defeito_constatado: dadosForm.defeito_constatado || '',
         tipo_acao_carabina: dadosForm.tipo_acao_carabina || '',
