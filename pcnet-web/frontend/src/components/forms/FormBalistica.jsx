@@ -266,6 +266,41 @@ export default function FormBalistica({ form, onChange }) {
                         </label>
                         <input type="text" name="empunhadura_revolver" value={form.empunhadura_revolver} onChange={onChange} placeholder="Ex: placas da empunhadura em polímero" className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50 focus:bg-white" />
                     </div>
+
+                    {/* BLOCO NOVO: ESPECÍFICO PARA PISTOLAS */}
+                    {form.tipo_material === 'pistola' && (
+                        <div className="mb-4 bg-blue-50 p-4 border border-blue-100 rounded-lg shadow-sm">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-blue-800 mb-1">
+                                        Detalhes da Armação
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        name="detalhes_armacao" 
+                                        value={form.detalhes_armacao || ''} 
+                                        onChange={onChange} 
+                                        placeholder="Ex: em polímero na cor preta" 
+                                        className="w-full p-2 border border-blue-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-blue-800 mb-1">
+                                        Informações do Carregador
+                                    </label>
+                                    <input 
+                                        type="text" 
+                                        name="carregador_info" 
+                                        value={form.carregador_info || ''} 
+                                        onChange={onChange} 
+                                        placeholder="Ex: desprovida de carregador" 
+                                        className="w-full p-2 border border-blue-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500" 
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                 </div>
             )}
 

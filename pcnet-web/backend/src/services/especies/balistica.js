@@ -1,62 +1,52 @@
 const fs = require('fs');
 const sharp = require('sharp');
+const { GoogleGenAI } = require('@google/genai');
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 async function extrairDadosArmaViaIA(caminhoImagem) {
-    // Redimensiona a imagem para otimizar o processamento local da sua máquina
-    const imagemOtimizadaBuffer = await sharp(caminhoImagem)
-        .resize({ width: 450, withoutEnlargement: true })
-        .jpeg({ quality: 80 })
-        .toBuffer();
+    const prompt = `Você é um Perito Criminal assistente. Analise a fotografia do vestígio balístico e extraia os dados técnicos. 
+    Retorne estritamente um JSON válido contendo exatamente estas chaves:
+    - "tipo_material": (Retorne EXATAMENTE UMA destas opções, em minúsculo e sem acento: "revolver", "pistola", "carabina", "fuzil", "municao_isolada" ou "coringa")
+    - "marca": (Identifique a marca fabricante observada ou deduzida; se inconclusiva, informe "não aparente")
+    - "modelo": (Identifique o modelo, se possível)
+    - "calibre": (Calibre aparente, gravado ou estimado)
+    - "capacidade": (Apenas o número de tiros que o armamento comporta, ex: 15)
+    - "acabamento": (Descrição livre do estado da superfície e coloração)
+    - "empunhadura_revolver": (Descreva o material das placas da empunhadura, se houver)
+    - "detalhes_armacao": (Se for pistola, descreva o material da armação, ex: "polímero preto" ou "duralumínio". Senão, deixe vazio)
+    - "carregador_info": (Se for pistola, informe se possui carregador visível, ex: "acompanhada de um carregador compatível" ou "desprovida de carregador". Senão, deixe vazio)
+    - "qtd_municao": (Apenas o número inteiro de munições soltas, ex: 0)
+    - "comprimento_total": (Apenas o número em milímetros, ex: 170)
+    - "comprimento_cano": (Apenas o número em milímetros, ex: 75)`;
 
-    const base64Image = imagemOtimizadaBuffer.toString('base64');
+    try {
+        // Lê o arquivo do disco e converte para Base64 corretamente
+        const imageBuffer = fs.readFileSync(caminhoImagem);
+        const base64Image = imageBuffer.toString('base64');
 
-    const prompt = `Analise esta fotografia pericial de um vestídio balístico (arma de fogo ou munições). Retorne estritamente um JSON válido (e nada mais) contendo exatamente estas chaves:
-    - "tipo_material": classifique estritamente como "revolver", "pistola", "carabina", "fuzil", "municao_isolada" ou "coringa / Outro (Livre)"
-    - "marca": identifique a marca legível gravada (ex: Taurus, CBC, Glock, Beretta) ou "não aparente"
-    - "modelo": identifique o modelo específico se houver inscrições ou formato característico (ex: RT 82, G3, 605) ou "não aparente"
-    - "calibre": calibre visível nas marcações (ex: .38 SPL, 9mm, .380 Auto, .357 Magnum, .40 S&W) ou "não aparente"
-    - "acabamento": aspecto visual predominante (ex: oxidado, inox, polímero preto, bicromatizado, ou outro que acha melhor)
-    - "qtd_municao": se for munição isolada ou carregador, informe a quantidade visível. Caso contrário, deixe vazio.
-    - "comprimento_total": deixe vazio (focaremos nisso depois)
-    - "comprimento_cano": deixe vazio (focaremos nisso depois)`;
-
-    // Chamada direta para o servidor local do Ollama
-    const respostaOllama = await fetch('http://localhost:11434/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            model: 'llava',
-            messages: [
+        const response = await ai.models.generateContent({
+            model: 'gemini-3.6-flash',
+            contents: [
                 {
-                    role: 'user',
-                    content: prompt,
-                    images: [base64Image]
-                }
+                    inlineData: {
+                        mimeType: 'image/jpeg',
+                        data: base64Image
+                    }
+                },
+                prompt
             ],
-            stream: false,
-            format: 'json' // Força o Ollama a retornar em formato JSON estruturado
-        })
-    });
+            config: {
+                temperature: 0.0,
+                responseMimeType: 'application/json'
+            }
+        });
 
-    if (!respostaOllama.ok) {
-        throw new Error(`Erro ao comunicar com o Ollama local: ${respostaOllama.statusText}`);
+        return JSON.parse(response.text);
+    } catch (error) {
+        throw new Error(`Erro ao comunicar com a API do Gemini: ${error.message}`);
     }
-
-    const resultado = await respostaOllama.json();
-    let respostaString = resultado.message?.content || "{}";
-
-    // Limpeza de segurança para garantir o formato JSON
-    const primeiroIndice = respostaString.indexOf('{');
-    const ultimoIndice = respostaString.lastIndexOf('}');
-
-    if (primeiroIndice !== -1 && ultimoIndice !== -1 && ultimoIndice > primeiroIndice) {
-        respostaString = respostaString.substring(primeiroIndice, ultimoIndice + 1);
-    } else {
-        throw new Error(`A IA local não retornou um JSON válido. Resposta: ${respostaString}`);
-    }
-
-    return JSON.parse(respostaString);
 }
+
 
 function processarBalistica(dadosForm) {
     let layout = {
@@ -149,7 +139,7 @@ function processarBalistica(dadosForm) {
         detalhes_coronha: dadosForm.detalhes_coronha || '',
         sistema_alimentacao: dadosForm.sistema_alimentacao || '',
         empunhadura_revolver: dadosForm.empunhadura_revolver || '',
-        carregador_info: dadosForm.carregator_info || '',
+        carregador_info: dadosForm.carregador_info || '',
         detalhes_armacao: dadosForm.detalhes_armacao || '',
         detalhes_fuzil: dadosForm.detalhes_fuzil || '',
         qtd_municao: dadosForm.qtd_municao || '',
