@@ -1,5 +1,5 @@
 const { iniciarLoginPCNet, confirmarToken2FA, acessarAceiteRequisicoes,
-     obterCsvRequisicoes, movimentarFav } = require('../services/pcnetService');
+     obterCsvRequisicoes, movimentarFav, movimentarFavsLote } = require('../services/pcnetService');
 const fs = require('fs');
 
 async function solicitarLogin(req, res) {
@@ -118,4 +118,33 @@ async function movimentarFavRoute(req, res) {
     }
 }
 
-module.exports = { solicitarLogin, enviarToken, acessarRequisicoes, exportarCsv, movimentarFavRoute };
+async function processarMovimentacaoLote(req, res) {
+    try {
+        const { cpf, codigoUnidade, listaFavs } = req.body;
+
+        // Validações básicas de entrada
+        if (!cpf || !codigoUnidade || !listaFavs || !Array.isArray(listaFavs)) {
+            return res.status(400).json({
+                status: 'ERRO',
+                mensagem: 'Parâmetros inválidos. Envie "cpf", "codigoUnidade" e uma "listaFavs" (array).'
+            });
+        }
+
+        console.log(`Iniciando lote de movimentação para o CPF: ${cpf}, Unidade: ${codigoUnidade}`);
+
+        // Chama a função robusta em lote do service
+        const resultado = await movimentarFavsLote(cpf, codigoUnidade, listaFavs);
+
+        return res.status(200).json(resultado);
+
+    } catch (error) {
+        console.error('Erro no controller de movimentação:', error.message);
+        return res.status(500).json({
+            status: 'ERRO',
+            mensagem: error.message
+        });
+    }
+}
+
+module.exports = { solicitarLogin, enviarToken, acessarRequisicoes, 
+    exportarCsv, movimentarFavRoute, processarMovimentacaoLote};

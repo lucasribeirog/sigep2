@@ -16,4 +16,6 @@ router.post('/exportar-csv', pcnetController.exportarCsv)
 
 router.post('/movimentar-fav', pcnetController.movimentarFavRoute)
 
+router.post('/movimentar-favs-lote', pcnetController.processarMovimentacaoLote)
+
 module.exports = router;

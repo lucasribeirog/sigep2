@@ -492,10 +492,189 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
     }
 }
 
+async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
+    await acessarAceiteRequisicoes(cpf, codigoUnidade);
+
+    const sessaoAtiva = sessoesAtivas.get(cpf);
+    if (!sessaoAtiva) throw new Error('Sessão perdida. Faça o login novamente.');
+
+    const { page, browser } = sessaoAtiva;
+    const resultados = [];
+
+    try {
+        console.log('Abrindo a tela de Cadeia de Custódia...');
+        let pagesAntigas = await browser.pages();
+
+        // 1. Clica no ícone na tela principal para abrir o pop-up de FAV
+        const clicouCustodia = await page.evaluate(() => {
+            const icone = document.querySelector('img[src*="ico_cadeia_custodia.png"]');
+            if (icone) {
+                const link = icone.closest('a');
+                if (link) {
+                    link.click();
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        if (!clicouCustodia) throw new Error('Ícone de Cadeia de Custódia não encontrado.');
+
+        // Captura o pop-up de Movimentação FAV
+        let popupFavPage = null;
+        for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 1000));
+            const pagesAtuais = await browser.pages();
+            if (pagesAtuais.length > pagesAntigas.length) {
+                popupFavPage = pagesAtuais.find(p => !pagesAntigas.includes(p));
+                if (popupFavPage) break;
+            }
+        }
+
+        if (!popupFavPage) throw new Error('O pop-up de Movimentação FAV não abriu.');
+
+        // Loop para processar cada FAV da lista na mesma janela
+        for (const item of listaFavs) {
+            const { numeroFav, novoLacre } = item;
+            console.log(`\n--- Processando FAV: ${numeroFav} ---`);
+
+            try {
+                await popupFavPage.waitForSelector('#btnLimpar', { visible: true, timeout: 15000 });
+
+                // 2. LIMPA A TELA ANTES DE CADA BUSCA (Garante que a tabela zere)
+                await popupFavPage.click('#btnLimpar');
+                await new Promise(r => setTimeout(r, 1500));
+
+                // 3. Digita o número da nova FAV
+                await popupFavPage.waitForSelector('#numeroDaFAV_Arg', { visible: true, timeout: 15000 });
+                await popupFavPage.type('#numeroDaFAV_Arg', String(numeroFav));
+                
+                // 4. Pesquisa
+                await popupFavPage.click('#btnPesquisar');
+                await new Promise(r => setTimeout(r, 4000)); // Aguarda o AJAX popular a tabela
+
+                // 5. Valida e marca estritamente a linha que contém o número da FAV atual
+                const selecionou = await popupFavPage.evaluate((favAlvo) => {
+                    const linhas = Array.from(document.querySelectorAll('tr'));
+                    for (const linha of linhas) {
+                        const textoLinha = linha.textContent || '';
+                        // Garante que a linha realmente pertence a essa FAV específica
+                        if (textoLinha.includes(String(favAlvo))) {
+                            const cb = linha.querySelector('input[type="checkbox"][name*="flagSelecionada"]');
+                            if (cb) {
+                                cb.click();
+                                return true;
+                            }
+                        }
+                    }
+                    return false;
+                }, numeroFav);
+
+                if (!selecionou) {
+                    resultados.push({ fav: numeroFav, status: 'ERRO', mensagem: 'Item não encontrado na tabela' });
+                    continue;
+                }
+
+                await new Promise(r => setTimeout(r, 1500));
+                let pagesAntesCustodia = await browser.pages();
+
+                // 6. Clica em "Sob Custódia" (abre a aba de custódia)
+                await popupFavPage.evaluate(() => {
+                    const btn = document.querySelector('input[value="Sob Custódia"]') || document.getElementById('botao_menu');
+                    if (btn) btn.click();
+                });
+
+                // Captura a aba de Sob Custódia
+                let popupCustodiaPage = null;
+                for (let i = 0; i < 15; i++) {
+                    await new Promise(r => setTimeout(r, 1000));
+                    const pagesAtuais = await browser.pages();
+                    if (pagesAtuais.length > pagesAntesCustodia.length) {
+                        popupCustodiaPage = pagesAtuais.find(p => !pagesAntesCustodia.includes(p));
+                        if (popupCustodiaPage) break;
+                    }
+                }
+
+                if (!popupCustodiaPage) throw new Error('A aba de Sob Custódia não abriu.');
+
+                // 7. Preenche dados na aba de custódia
+                await popupCustodiaPage.waitForSelector('#finalidade2', { timeout: 15000 });
+                await popupCustodiaPage.evaluate((lacreInfo) => {
+                    const radioPericial = document.getElementById('finalidade2');
+                    if (radioPericial) {
+                        radioPericial.checked = true;
+                        radioPericial.click();
+                        if (typeof campoAlterado === 'function') campoAlterado();
+                    }
+
+                    if (lacreInfo && lacreInfo.trim() !== '') {
+                        const radioSim = document.getElementById('houveRompimentoLacre0');
+                        if (radioSim) {
+                            radioSim.click();
+                            if (typeof habilitarDesabilitarCampNovoInvolucro === 'function') {
+                                habilitarDesabilitarCampNovoInvolucro(radioSim);
+                            }
+                        }
+                        const inputLacre = document.getElementById('involucroNumero');
+                        if (inputLacre) {
+                            inputLacre.value = lacreInfo;
+                            inputLacre.dispatchEvent(new Event('input', { bubbles: true }));
+                            inputLacre.dispatchEvent(new Event('change', { bubbles: true }));
+                        }
+                    } else {
+                        const radioNao = document.getElementById('houveRompimentoLacre1');
+                        if (radioNao) {
+                            radioNao.click();
+                            if (typeof habilitarDesabilitarCampNovoInvolucro === 'function') {
+                                habilitarDesabilitarCampNovoInvolucro(radioNao);
+                            }
+                        }
+                    }
+                }, novoLacre);
+
+                // 8. Salva a movimentação
+                await new Promise(r => setTimeout(r, 1000));
+                await popupCustodiaPage.click('#btnGrava');
+                await new Promise(r => setTimeout(r, 3000));
+
+                // 9. Fecha a aba de custódia
+                try {
+                    await popupCustodiaPage.click('#fechar_id');
+                } catch (e) {
+                    await popupCustodiaPage.close();
+                }
+                await new Promise(r => setTimeout(r, 2000));
+
+                resultados.push({ fav: numeroFav, status: 'SUCESSO' });
+                console.log(`FAV ${numeroFav} processada com sucesso.`);
+
+            } catch (errItem) {
+                console.error(`Erro na FAV ${numeroFav}:`, errItem.message);
+                resultados.push({ fav: numeroFav, status: 'ERRO', mensagem: errItem.message });
+            }
+        }
+
+        // Encerramento final da janela de FAV
+        try {
+            await popupFavPage.click('#btnLimpar');
+            await new Promise(r => setTimeout(r, 1000));
+            await popupFavPage.click('#fechar_id');
+        } catch (e) {
+            await popupFavPage.close();
+        }
+
+        return { status: 'CONCLUIDO', detalhes: resultados };
+
+    } catch (error) {
+        throw new Error('Erro geral no lote de FAVs: ' + error.message);
+    }
+}
+
 module.exports = {
     iniciarLoginPCNet,
     confirmarToken2FA,
     acessarAceiteRequisicoes,
     obterCsvRequisicoes,
-    movimentarFav
+    movimentarFav,
+    movimentarFavsLote
 };
