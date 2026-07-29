@@ -10,7 +10,7 @@ const sessoesAtivas = new Map();
 async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
     const browser = await puppeteer.launch({
         browser: 'firefox', // MUDANÇA AQUI: "browser" no lugar de "product"
-        headless: true, 
+        headless: false, 
         defaultViewport: null,
         args: [
             '--start-maximized',
@@ -225,7 +225,7 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
             });
 
             console.log('Aguardando a home da unidade carregar...');
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 }).catch(() => {});
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 2000 }).catch(() => {});
             await new Promise(r => setTimeout(r, 3000));
         }
 
@@ -332,9 +332,170 @@ async function obterCsvRequisicoes(cpf, codigoUnidade = 'C0053') {
     }
 }
 
+async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
+    await acessarAceiteRequisicoes(cpf, codigoUnidade);
+
+    const sessaoAtiva = sessoesAtivas.get(cpf);
+    if (!sessaoAtiva) throw new Error('Sessão perdida. Faça o login novamente.');
+
+    const { page, browser } = sessaoAtiva;
+
+    try {
+        console.log('Abrindo a tela de Cadeia de Custódia...');
+        let pagesAntigas = await browser.pages();
+
+        // 1. Clica no ícone na tela principal
+        const clicouCustodia = await page.evaluate(() => {
+            const icone = document.querySelector('img[src*="ico_cadeia_custodia.png"]');
+            if (icone) {
+                const link = icone.closest('a');
+                if (link) {
+                    link.click();
+                    return true;
+                }
+            }
+            return false;
+        });
+
+        if (!clicouCustodia) throw new Error('Ícone de Cadeia de Custódia não encontrado.');
+
+        // 2. Captura a 1ª Pop-up (Movimentação FAV)
+        console.log('Aguardando a primeira janela pop-up abrir...');
+        let popupFavPage = null;
+        for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 1000));
+            const pagesAtuais = await browser.pages();
+            if (pagesAtuais.length > pagesAntigas.length) {
+                popupFavPage = pagesAtuais.find(p => !pagesAntigas.includes(p));
+                if (popupFavPage) break;
+            }
+        }
+
+        if (!popupFavPage) throw new Error('O pop-up de Movimentação FAV não abriu.');
+        console.log('Pop-up FAV capturado.');
+
+        // 3. Preenche a FAV e pesquisa
+        await popupFavPage.waitForSelector('#numeroDaFAV_Arg', { timeout: 20000 });
+        console.log(`Preenchendo a FAV: ${numeroFav}...`);
+        await popupFavPage.type('#numeroDaFAV_Arg', String(numeroFav));
+
+        console.log('Pesquisando a FAV...');
+        await popupFavPage.click('#btnPesquisar');
+        await new Promise(r => setTimeout(r, 4000));
+
+        // 4. Marca o checkbox na tabela
+        console.log('Marcando o item na tabela...');
+        const selecionou = await popupFavPage.evaluate((favAlvo) => {
+            const linhas = Array.from(document.querySelectorAll('tr'));
+            for (const linha of linhas) {
+                if (linha.textContent.includes(String(favAlvo))) {
+                    const cb = linha.querySelector('input[type="checkbox"][name*="flagSelecionada"]');
+                    if (cb) {
+                        cb.click();
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }, numeroFav);
+
+        if (!selecionou) throw new Error(`Item da FAV ${numeroFav} não encontrado na tabela.`);
+        await new Promise(r => setTimeout(r, 1500));
+
+        // Atualiza a lista de páginas antes de clicar em Sob Custódia (para capturar a nova aba)
+        pagesAntigas = await browser.pages();
+
+        // 5. Clica no botão "Sob Custódia" (que abre a nova aba/pop-up de custódia que você colou o HTML)
+        console.log('Clicando em "Sob Custódia"...');
+        await popupFavPage.evaluate(() => {
+            const btn = document.querySelector('input[value="Sob Custódia"]') || document.getElementById('botao_menu');
+            if (btn) btn.click();
+        });
+
+        // 6. Captura a 2ª Pop-up (A aba de Sob Custódia)
+        console.log('Aguardando a janela pop-up de Sob Custódia abrir...');
+        let popupCustodiaPage = null;
+        for (let i = 0; i < 20; i++) {
+            await new Promise(r => setTimeout(r, 1000));
+            const pagesAtuais = await browser.pages();
+            if (pagesAtuais.length > pagesAntigas.length) {
+                popupCustodiaPage = pagesAtuais.find(p => !pagesAntigas.includes(p));
+                if (popupCustodiaPage) break;
+            }
+        }
+
+        if (!popupCustodiaPage) throw new Error('A janela pop-up de Sob Custódia não abriu.');
+        console.log('Pop-up de Sob Custódia capturado com sucesso!');
+
+        // 7. Agora sim, aguarda o #finalidade2 na aba correta de Sob Custódia!
+        console.log('Aguardando os campos de custódia carregarem...');
+        await popupCustodiaPage.waitForSelector('#finalidade2', { timeout: 15000 });
+
+        // 8. Seleciona "Exame Pericial" e preenche o Lacre
+        console.log('Preenchendo finalidade e lacre...');
+        await popupCustodiaPage.evaluate((lacreInfo) => {
+            const radioPericial = document.getElementById('finalidade2');
+            if (radioPericial) {
+                radioPericial.checked = true;
+                radioPericial.click();
+                if (typeof campoAlterado === 'function') campoAlterado();
+            }
+
+            if (lacreInfo && lacreInfo.trim() !== '') {
+                const radioSim = document.getElementById('houveRompimentoLacre0'); // Sim
+                if (radioSim) {
+                    radioSim.click();
+                    if (typeof habilitarDesabilitarCampoNovoInvolucro === 'function') {
+                        habilitarDesabilitarCampoNovoInvolucro(radioSim);
+                    }
+                }
+                const inputLacre = document.getElementById('involucroNumero');
+                if (inputLacre) {
+                    inputLacre.value = lacreInfo;
+                    inputLacre.dispatchEvent(new Event('input', { bubbles: true }));
+                    inputLacre.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            } else {
+                const radioNao = document.getElementById('houveRompimentoLacre1'); // Não
+                if (radioNao) {
+                    radioNao.click();
+                    if (typeof habilitarDesabilitarCampoNovoInvolucro === 'function') {
+                        habilitarDesabilitarCampoNovoInvolucro(radioNao);
+                    }
+                }
+            }
+        }, novoLacre);
+
+        // 9. Clica em SALVAR na aba de Custódia
+        console.log('Salvando a movimentação...');
+        await new Promise(r => setTimeout(r, 1500));
+        await popupCustodiaPage.click('#btnGrava');
+        await new Promise(r => setTimeout(r, 4000));
+
+        // 10. Fecha a aba de Custódia
+        console.log('Fechando a janela de custódia...');
+        await popupCustodiaPage.click('#fechar_id');
+        await new Promise(r => setTimeout(r, 2000));
+
+        // 11. Limpa e fecha a aba anterior da FAV
+        console.log('Limpando e fechando a tela de FAV...');
+        await popupFavPage.click('#btnLimpar');
+        await new Promise(r => setTimeout(r, 1500));
+        await popupFavPage.click('#fechar_id');
+        await new Promise(r => setTimeout(r, 2000));
+
+        console.log('Fluxo completo da FAV e Custódia executado com sucesso!');
+        return { status: 'SUCESSO', mensagem: `FAV ${numeroFav} movimentada para Sob Custódia com sucesso!` };
+
+    } catch (error) {
+        throw new Error('Erro ao movimentar a FAV: ' + error.message);
+    }
+}
+
 module.exports = {
     iniciarLoginPCNet,
     confirmarToken2FA,
     acessarAceiteRequisicoes,
-    obterCsvRequisicoes
+    obterCsvRequisicoes,
+    movimentarFav
 };

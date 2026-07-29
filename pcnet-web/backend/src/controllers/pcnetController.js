@@ -1,4 +1,5 @@
-const { iniciarLoginPCNet, confirmarToken2FA, acessarAceiteRequisicoes, obterCsvRequisicoes } = require('../services/pcnetService');
+const { iniciarLoginPCNet, confirmarToken2FA, acessarAceiteRequisicoes,
+     obterCsvRequisicoes, movimentarFav } = require('../services/pcnetService');
 const fs = require('fs');
 
 async function solicitarLogin(req, res) {
@@ -87,4 +88,34 @@ async function exportarCsv(req, res) {
     }
 }
 
-module.exports = { solicitarLogin, enviarToken, acessarRequisicoes, exportarCsv };
+async function movimentarFavRoute(req, res) {
+    try {
+        const { cpf, codigoUnidade, numeroFav, novoLacre } = req.body;
+
+        // Validações básicas de entrada
+        if (!cpf) {
+            return res.status(400).json({ erro: 'O campo "cpf" é obrigatório.' });
+        }
+        if (!numeroFav) {
+            return res.status(400).json({ erro: 'O campo "numeroFav" é obrigatório.' });
+        }
+
+        console.log(`Iniciando movimentação da FAV ${numeroFav} para o CPF: ${cpf}...`);
+        
+        // Chama a função do service que criamos
+        const resultado = await movimentarFav(
+            cpf, 
+            codigoUnidade || 'C0053', 
+            numeroFav, 
+            novoLacre
+        );
+
+        return res.status(200).json(resultado);
+
+    } catch (error) {
+        console.error('Erro ao processar movimentação da FAV:', error.message);
+        return res.status(500).json({ erro: error.message });
+    }
+}
+
+module.exports = { solicitarLogin, enviarToken, acessarRequisicoes, exportarCsv, movimentarFavRoute };

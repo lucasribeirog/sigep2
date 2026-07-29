@@ -14,4 +14,6 @@ router.post('/acessar-requisicoes', pcnetController.acessarRequisicoes)
 
 router.post('/exportar-csv', pcnetController.exportarCsv)
 
+router.post('/movimentar-fav', pcnetController.movimentarFavRoute)
+
 module.exports = router;
