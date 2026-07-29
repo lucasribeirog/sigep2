@@ -339,6 +339,8 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
     if (!sessaoAtiva) throw new Error('Sessão perdida. Faça o login novamente.');
 
     const { page, browser } = sessaoAtiva;
+    let popupFavPage = null;
+    let popupCustodiaPage = null;
 
     try {
         console.log('Abrindo a tela de Cadeia de Custódia...');
@@ -357,12 +359,11 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
             return false;
         });
 
-        if (!clicouCustodia) throw new Error('Ícone de Cadeia de Custódia não encontrado.');
+        if (!clicouCustodia) throw new Error('Ícone de Cadeia de Custódia não encontrado na tela principal.');
 
-        // 2. Captura a 1ª Pop-up (Movimentação FAV)
+        // 2. Captura a 1ª Pop-up (Movimentação FAV) com timeout seguro
         console.log('Aguardando a primeira janela pop-up abrir...');
-        let popupFavPage = null;
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 25; i++) {
             await new Promise(r => setTimeout(r, 1000));
             const pagesAtuais = await browser.pages();
             if (pagesAtuais.length > pagesAntigas.length) {
@@ -371,12 +372,17 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
             }
         }
 
-        if (!popupFavPage) throw new Error('O pop-up de Movimentação FAV não abriu.');
+        if (!popupFavPage) throw new Error('O pop-up de Movimentação FAV não abriu dentro do tempo limite.');
         console.log('Pop-up FAV capturado.');
+
+        // Garante que a página está fechada caso ocorra exceção fatal
+        popupFavPage.on('close', () => { popupFavPage = null; });
 
         // 3. Preenche a FAV e pesquisa
         await popupFavPage.waitForSelector('#numeroDaFAV_Arg', { timeout: 20000 });
         console.log(`Preenchendo a FAV: ${numeroFav}...`);
+        await popupFavPage.click('#numeroDaFAV_Arg', { clickCount: 3 });
+        await popupFavPage.keyboard.press('Backspace');
         await popupFavPage.type('#numeroDaFAV_Arg', String(numeroFav));
 
         console.log('Pesquisando a FAV...');
@@ -399,13 +405,12 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
             return false;
         }, numeroFav);
 
-        if (!selecionou) throw new Error(`Item da FAV ${numeroFav} não encontrado na tabela.`);
+        if (!selecionou) throw new Error(`Item da FAV ${numeroFav} não encontrado na tabela de resultados.`);
         await new Promise(r => setTimeout(r, 1500));
 
-        // Atualiza a lista de páginas antes de clicar em Sob Custódia (para capturar a nova aba)
         pagesAntigas = await browser.pages();
 
-        // 5. Clica no botão "Sob Custódia" (que abre a nova aba/pop-up de custódia que você colou o HTML)
+        // 5. Clica no botão "Sob Custódia"
         console.log('Clicando em "Sob Custódia"...');
         await popupFavPage.evaluate(() => {
             const btn = document.querySelector('input[value="Sob Custódia"]') || document.getElementById('botao_menu');
@@ -414,8 +419,7 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
 
         // 6. Captura a 2ª Pop-up (A aba de Sob Custódia)
         console.log('Aguardando a janela pop-up de Sob Custódia abrir...');
-        let popupCustodiaPage = null;
-        for (let i = 0; i < 20; i++) {
+        for (let i = 0; i < 25; i++) {
             await new Promise(r => setTimeout(r, 1000));
             const pagesAtuais = await browser.pages();
             if (pagesAtuais.length > pagesAntigas.length) {
@@ -427,11 +431,10 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
         if (!popupCustodiaPage) throw new Error('A janela pop-up de Sob Custódia não abriu.');
         console.log('Pop-up de Sob Custódia capturado com sucesso!');
 
-        // 7. Agora sim, aguarda o #finalidade2 na aba correta de Sob Custódia!
-        console.log('Aguardando os campos de custódia carregarem...');
+        // 7. Aguarda o #finalidade2 carregar na aba de custódia
         await popupCustodiaPage.waitForSelector('#finalidade2', { timeout: 15000 });
 
-        // 8. Seleciona "Exame Pericial" e preenche o Lacre
+        // 8. Preenche "Exame Pericial" e o Lacre
         console.log('Preenchendo finalidade e lacre...');
         await popupCustodiaPage.evaluate((lacreInfo) => {
             const radioPericial = document.getElementById('finalidade2');
@@ -442,7 +445,7 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
             }
 
             if (lacreInfo && lacreInfo.trim() !== '') {
-                const radioSim = document.getElementById('houveRompimentoLacre0'); // Sim
+                const radioSim = document.getElementById('houveRompimentoLacre0');
                 if (radioSim) {
                     radioSim.click();
                     if (typeof habilitarDesabilitarCampoNovoInvolucro === 'function') {
@@ -456,7 +459,7 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
                     inputLacre.dispatchEvent(new Event('change', { bubbles: true }));
                 }
             } else {
-                const radioNao = document.getElementById('houveRompimentoLacre1'); // Não
+                const radioNao = document.getElementById('houveRompimentoLacre1');
                 if (radioNao) {
                     radioNao.click();
                     if (typeof habilitarDesabilitarCampoNovoInvolucro === 'function') {
@@ -466,28 +469,44 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
             }
         }, novoLacre);
 
-        // 9. Clica em SALVAR na aba de Custódia
+        // 9. Clica em SALVAR e valida se o sistema recusou por regra de negócio
         console.log('Salvando a movimentação...');
         await new Promise(r => setTimeout(r, 1500));
         await popupCustodiaPage.click('#btnGrava');
         await new Promise(r => setTimeout(r, 4000));
 
-        // 10. Fecha a aba de Custódia
-        console.log('Fechando a janela de custódia...');
-        await popupCustodiaPage.click('#fechar_id');
+        const mensagemErroSistema = await popupCustodiaPage.evaluate(() => {
+            const elemErro = document.querySelector('.msg_erro, td.msg_erro, div.msg_erro');
+            return elemErro && elemErro.textContent.trim() !== '' ? elemErro.textContent.trim() : null;
+        });
+
+        if (mensagemErroSistema) {
+            throw new Error(`Sistema recusou a operação: ${mensagemErroSistema}`);
+        }
+
+        // 10. Fecha a aba de Custódia com segurança
+        try {
+            await popupCustodiaPage.click('#fechar_id');
+        } catch (e) {
+            if (!popupCustodiaPage.isClosed()) await popupCustodiaPage.close();
+        }
         await new Promise(r => setTimeout(r, 2000));
 
-        // 11. Limpa e fecha a aba anterior da FAV
-        console.log('Limpando e fechando a tela de FAV...');
-        await popupFavPage.click('#btnLimpar');
-        await new Promise(r => setTimeout(r, 1500));
-        await popupFavPage.click('#fechar_id');
-        await new Promise(r => setTimeout(r, 2000));
+        // 11. Limpa e fecha a aba principal da FAV
+        if (popupFavPage && !popupFavPage.isClosed()) {
+            await popupFavPage.click('#btnLimpar');
+            await new Promise(r => setTimeout(r, 1500));
+            await popupFavPage.click('#fechar_id');
+        }
 
-        console.log('Fluxo completo da FAV e Custódia executado com sucesso!');
+        console.log('Fluxo completo da FAV executado com sucesso!');
         return { status: 'SUCESSO', mensagem: `FAV ${numeroFav} movimentada para Sob Custódia com sucesso!` };
 
     } catch (error) {
+        // Garante limpeza de abas órfãs em caso de exceção
+        try { if (popupCustodiaPage && !popupCustodiaPage.isClosed()) await popupCustodiaPage.close(); } catch (err) {}
+        try { if (popupFavPage && !popupFavPage.isClosed()) await popupFavPage.close(); } catch (err) {}
+
         throw new Error('Erro ao movimentar a FAV: ' + error.message);
     }
 }
@@ -500,12 +519,13 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
 
     const { page, browser } = sessaoAtiva;
     const resultados = [];
+    let popupFavPage = null;
 
     try {
         console.log('Abrindo a tela de Cadeia de Custódia...');
         let pagesAntigas = await browser.pages();
 
-        // 1. Clica no ícone na tela principal para abrir o pop-up de FAV
+        // 1. Clica no ícone na tela principal
         const clicouCustodia = await page.evaluate(() => {
             const icone = document.querySelector('img[src*="ico_cadeia_custodia.png"]');
             if (icone) {
@@ -520,9 +540,8 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
 
         if (!clicouCustodia) throw new Error('Ícone de Cadeia de Custódia não encontrado.');
 
-        // Captura o pop-up de Movimentação FAV
-        let popupFavPage = null;
-        for (let i = 0; i < 20; i++) {
+        // Captura o pop-up principal de FAV
+        for (let i = 0; i < 25; i++) {
             await new Promise(r => setTimeout(r, 1000));
             const pagesAtuais = await browser.pages();
             if (pagesAtuais.length > pagesAntigas.length) {
@@ -533,32 +552,33 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
 
         if (!popupFavPage) throw new Error('O pop-up de Movimentação FAV não abriu.');
 
-        // Loop para processar cada FAV da lista na mesma janela
+        // Loop para processar cada FAV da lista
         for (const item of listaFavs) {
             const { numeroFav, novoLacre } = item;
             console.log(`\n--- Processando FAV: ${numeroFav} ---`);
+            let popupCustodiaPage = null;
 
             try {
                 await popupFavPage.waitForSelector('#btnLimpar', { visible: true, timeout: 15000 });
 
-                // 2. LIMPA A TELA ANTES DE CADA BUSCA (Garante que a tabela zere)
+                // Limpa a tela antes de cada busca
                 await popupFavPage.click('#btnLimpar');
                 await new Promise(r => setTimeout(r, 1500));
 
-                // 3. Digita o número da nova FAV
+                // Digita e pesquisa
                 await popupFavPage.waitForSelector('#numeroDaFAV_Arg', { visible: true, timeout: 15000 });
+                await popupFavPage.click('#numeroDaFAV_Arg', { clickCount: 3 });
+                await popupFavPage.keyboard.press('Backspace');
                 await popupFavPage.type('#numeroDaFAV_Arg', String(numeroFav));
                 
-                // 4. Pesquisa
                 await popupFavPage.click('#btnPesquisar');
-                await new Promise(r => setTimeout(r, 4000)); // Aguarda o AJAX popular a tabela
+                await new Promise(r => setTimeout(r, 4000));
 
-                // 5. Valida e marca estritamente a linha que contém o número da FAV atual
+                // Valida e marca o checkbox
                 const selecionou = await popupFavPage.evaluate((favAlvo) => {
                     const linhas = Array.from(document.querySelectorAll('tr'));
                     for (const linha of linhas) {
                         const textoLinha = linha.textContent || '';
-                        // Garante que a linha realmente pertence a essa FAV específica
                         if (textoLinha.includes(String(favAlvo))) {
                             const cb = linha.querySelector('input[type="checkbox"][name*="flagSelecionada"]');
                             if (cb) {
@@ -578,14 +598,13 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
                 await new Promise(r => setTimeout(r, 1500));
                 let pagesAntesCustodia = await browser.pages();
 
-                // 6. Clica em "Sob Custódia" (abre a aba de custódia)
+                // Clica em "Sob Custódia"
                 await popupFavPage.evaluate(() => {
                     const btn = document.querySelector('input[value="Sob Custódia"]') || document.getElementById('botao_menu');
                     if (btn) btn.click();
                 });
 
-                // Captura a aba de Sob Custódia
-                let popupCustodiaPage = null;
+                // Captura a aba de custódia
                 for (let i = 0; i < 15; i++) {
                     await new Promise(r => setTimeout(r, 1000));
                     const pagesAtuais = await browser.pages();
@@ -597,7 +616,7 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
 
                 if (!popupCustodiaPage) throw new Error('A aba de Sob Custódia não abriu.');
 
-                // 7. Preenche dados na aba de custódia
+                // Preenche os campos na aba de custódia
                 await popupCustodiaPage.waitForSelector('#finalidade2', { timeout: 15000 });
                 await popupCustodiaPage.evaluate((lacreInfo) => {
                     const radioPericial = document.getElementById('finalidade2');
@@ -632,16 +651,25 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
                     }
                 }, novoLacre);
 
-                // 8. Salva a movimentação
+                // Salva a movimentação e checa erros do sistema
                 await new Promise(r => setTimeout(r, 1000));
                 await popupCustodiaPage.click('#btnGrava');
                 await new Promise(r => setTimeout(r, 3000));
 
-                // 9. Fecha a aba de custódia
+                const mensagemErroSistema = await popupCustodiaPage.evaluate(() => {
+                    const elemErro = document.querySelector('.msg_erro, td.msg_erro, div.msg_erro');
+                    return elemErro && elemErro.textContent.trim() !== '' ? elemErro.textContent.trim() : null;
+                });
+
+                if (mensagemErroSistema) {
+                    throw new Error(`Sistema recusou: ${mensagemErroSistema}`);
+                }
+
+                // Fecha a aba de custódia
                 try {
                     await popupCustodiaPage.click('#fechar_id');
                 } catch (e) {
-                    await popupCustodiaPage.close();
+                    if (!popupCustodiaPage.isClosed()) await popupCustodiaPage.close();
                 }
                 await new Promise(r => setTimeout(r, 2000));
 
@@ -651,21 +679,34 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
             } catch (errItem) {
                 console.error(`Erro na FAV ${numeroFav}:`, errItem.message);
                 resultados.push({ fav: numeroFav, status: 'ERRO', mensagem: errItem.message });
+
+                // Se der erro nesta FAV do lote, garante que fecha a aba de custódia caso tenha ficado aberta
+                try {
+                    if (popupCustodiaPage && !popupCustodiaPage.isClosed()) {
+                        await popupCustodiaPage.close();
+                    }
+                } catch (eClose) {}
             }
         }
 
-        // Encerramento final da janela de FAV
+        // Encerramento final seguro da janela principal de FAV
         try {
-            await popupFavPage.click('#btnLimpar');
-            await new Promise(r => setTimeout(r, 1000));
-            await popupFavPage.click('#fechar_id');
-        } catch (e) {
-            await popupFavPage.close();
+            if (popupFavPage && !popupFavPage.isClosed()) {
+                await popupFavPage.click('#btnLimpar');
+                await new Promise(r => setTimeout(r, 1000));
+                await popupFavPage.click('#fechar_id');
+            }
+        } catch (eEnd) {
+            if (popupFavPage && !popupFavPage.isClosed()) await popupFavPage.close();
         }
 
         return { status: 'CONCLUIDO', detalhes: resultados };
 
     } catch (error) {
+        try {
+            if (popupFavPage && !popupFavPage.isClosed()) await popupFavPage.close();
+        } catch (e) {}
+
         throw new Error('Erro geral no lote de FAVs: ' + error.message);
     }
 }
