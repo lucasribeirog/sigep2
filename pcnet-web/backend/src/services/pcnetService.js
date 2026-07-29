@@ -9,17 +9,15 @@ const sessoesAtivas = new Map();
 
 async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
     const browser = await puppeteer.launch({
-        browser: 'firefox', // MUDANÇA AQUI: "browser" no lugar de "product"
+        browser: 'firefox',
         headless: false, 
         defaultViewport: null,
         args: [
             '--start-maximized',
-            // Caso o Puppeteer teime em abrir o Chromium, essas flags matam o gerenciador de senhas nativo:
             '--password-store=basic', 
             '--disable-save-password-bubble',
             '--disable-features=PasswordLeakDetection,AutofillServerCommunication'
         ],
-        // Caso ele abra o Firefox corretamente, desativa o gerenciador nativo da Mozilla:
         extraPrefsFirefox: {
             'signon.rememberSignons': false,
             'signon.autofillForms': false,
@@ -31,28 +29,41 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
     const page = await browser.newPage();
 
     page.on('dialog', async dialog => {
-        await dialog.dismiss(); // ou dialog.accept()
+        await dialog.dismiss();
     });
 
     try {
         await page.goto('https://www.pcnet.mg.gov.br/APP/', { waitUntil: 'networkidle2' });
 
-        // 1. Preenche CPF e Senha
-        await page.waitForSelector('input[name="j_username"]', { timeout: 10000 });
+        // 1. Preenche CPF e Senha com validação de existência dos inputs
+        await page.waitForSelector('input[name="j_username"]', { timeout: 15000 });
         await page.type('input[name="j_username"]', cpf);
         await page.type('input[name="j_password"]', senha);
 
-        // 2. Submete o formulário de login
+        // 2. Submete o formulário
         await page.keyboard.press('Enter');
 
-        // 3. Aguarda a tela de seleção de e-mail do 2FA carregar
+        // 3. Aguarda os botões de e-mail do 2FA OU detecta se o login falhou na mesma tela
         console.log('Aguardando os botões de e-mail aparecerem no HTML...');
         
-        await page.waitForFunction(() => {
-            // Busca diretamente pelas tags <span> que tenham a classe z-label (como no seu print)
-            const spans = Array.from(document.querySelectorAll('span.z-label'));
-            return spans.some(span => span.textContent && span.textContent.includes('E-mail'));
-        }, { timeout: 30000 });
+        const resultadoLogin = await Promise.race([
+            page.waitForFunction(() => {
+                const spans = Array.from(document.querySelectorAll('span.z-label'));
+                return spans.some(span => span.textContent && span.textContent.includes('E-mail'));
+            }, { timeout: 30000 }).then(() => 'SUCESSO_2FA'),
+            
+            // Detecta se apareceu mensagem de erro de credenciais na tela de login
+            page.waitForSelector('.error, .msg_erro, div[style*="color: red"]', { timeout: 5000 })
+                .then(() => 'ERRO_CREDENCIAL')
+                .catch(() => 'TIMEOUT_IGNORADO')
+        ]);
+
+        if (resultadoLogin === 'ERRO_CREDENCIAL') {
+            throw new Error('Falha no login: Credenciais inválidas ou erro reportado pelo sistema.');
+        }
+        if (resultadoLogin === 'TIMEOUT_IGNORADO') {
+            // Se o race falhou na verificação de erro, deixa o fluxo tentar o próximo passo ou cair no timeout principal
+        }
 
         // 4. Identifica e clica no e-mail desejado
         const textoBusca = tipoEmail.toLowerCase() === 'secundario' ? 'E-mail Secundário' : 'E-mail Principal';
@@ -60,12 +71,9 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
 
         const clicouComSucesso = await page.evaluate((busca) => {
             const spans = Array.from(document.querySelectorAll('span.z-label'));
-            
-            // Encontra o span, limpando os espaços invisíveis antes e depois do texto com .trim()
             const spanEmail = spans.find(el => el.textContent && el.textContent.trim().includes(busca));
             
             if (spanEmail) {
-                // Pega a caixa "pai" (a div class="z-vlayout-inner") que o seu print mostrou, e clica nela!
                 const divClicavel = spanEmail.closest('.z-vlayout-inner') || spanEmail.parentElement || spanEmail;
                 divClicavel.click();
                 return true;
@@ -74,10 +82,10 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
         }, textoBusca);
 
         if (!clicouComSucesso) {
-            throw new Error(`Não foi possível clicar na opção "${textoBusca}". Elemento não encontrado.`);
+            throw new Error(`Não foi possível encontrar ou clicar na opção "${textoBusca}".`);
         }
 
-        // 5. Aguarda o PCNet processar o envio do código
+        // 5. Aguarda o processamento do envio do código
         await new Promise(r => setTimeout(r, 4000));
 
         sessoesPendentes.set(cpf, { browser, page, tipoEmail });
@@ -88,7 +96,12 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
         };
 
     } catch (error) {
-        await browser.close();
+        if (browser && !browser.isConnected()) {
+            await browser.close().catch(() => {});
+        } else if (page) {
+            await browser.close().catch(() => {});
+        }
+        sessoesPendentes.delete(cpf);
         throw new Error('Falha no processo inicial do PCNet: ' + error.message);
     }
 }
@@ -96,7 +109,7 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
 async function confirmarToken2FA(cpf, token) {
     const sessao = sessoesPendentes.get(cpf);
     if (!sessao) {
-        throw new Error('Nenhuma sessão pendente de 2FA encontrada para este CPF.');
+        throw new Error('Nenhuma sessão pendente de 2FA encontrada para este CPF. Faça o login novamente.');
     }
 
     const { browser, page } = sessao;
@@ -115,7 +128,7 @@ async function confirmarToken2FA(cpf, token) {
             }
             await inputsToken[5].press('Enter');
         } else {
-            throw new Error(`Encontradas ${inputsToken.length} caixas, mas eram esperadas 6.`);
+            throw new Error(`Encontradas ${inputsToken.length} caixas de token, mas eram esperadas 6.`);
         }
 
         console.log('Procurando o botão Verificar para clicar...');
@@ -150,22 +163,19 @@ async function confirmarToken2FA(cpf, token) {
                 page.waitForSelector('input.code-input', { hidden: true, timeout: 15000 })
             ]);
         } catch (error) {
-            throw new Error('O botão VERIFICAR não funcionou ou o token estava incorreto. O site travou na mesma tela.');
+            throw new Error('O botão VERIFICAR não respondeu ou o token informado estava incorreto/expirado.');
         }
 
         await new Promise(r => setTimeout(r, 3000));
         
         const urlAtual = await page.url();
         if (urlAtual.includes('validacao_duas_etapas')) {
-            throw new Error('Falso positivo evitado: O robô continuou preso na tela de 2FA.');
+            throw new Error('Token inválido ou incorreto: O sistema continuou preso na tela de 2FA.');
         }
 
         console.log('Sucesso comprovado! Sessão autenticada mantida ativa em memória.');
 
-        // Salva a sessão ativa em memória (NÃO FECHA O BROWSER)
         sessoesAtivas.set(cpf, { browser, page });
-
-        // Remove das pendências
         sessoesPendentes.delete(cpf);
 
         return { 
@@ -174,9 +184,12 @@ async function confirmarToken2FA(cpf, token) {
         };
 
     } catch (error) {
-        if (!page.isClosed()) {
-            await browser.close();
-        }
+        try {
+            if (browser && page && !page.isClosed()) {
+                await browser.close();
+            }
+        } catch (e) {}
+        
         sessoesPendentes.delete(cpf);
         throw new Error('Erro ao validar o token 2FA: ' + error.message);
     }
@@ -194,7 +207,7 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
     try {
         if (page.isClosed()) {
             sessoesAtivas.delete(cpf);
-            throw new Error('A janela do navegador foi fechada. Faça o login novamente.');
+            throw new Error('A janela do navegador foi fechada pelo usuário. Faça o login novamente.');
         }
 
         console.log('Navegando para a página principal do PCNet...');
@@ -203,19 +216,15 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
         const urlAtual = page.url();
         if (urlAtual.includes('loginVM.zul') || urlAtual.includes('seg.id')) {
             sessoesAtivas.delete(cpf);
-            throw new Error('A sessão expirou. Faça o login novamente.');
+            throw new Error('A sessão expirou no servidor. Faça o login novamente.');
         }
 
-        // ID CORRIGIDO: unidadeSelecionada (singular)
         const temSeletorUnidade = await page.$('select#unidadeSelecionada');
         
         if (temSeletorUnidade) {
             console.log(`Selecionando a unidade: ${codigoUnidade}...`);
-            
-            // Seleciona a unidade no dropdown correto
             await page.select('select#unidadeSelecionada', codigoUnidade);
             
-            // Clica no botão Confirmar
             await page.evaluate(() => {
                 const botoes = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
                 const btnConfirmar = botoes.find(b => (b.textContent && b.textContent.includes('Confirmar')) || b.value === 'Confirmar');
@@ -225,13 +234,12 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
             });
 
             console.log('Aguardando a home da unidade carregar...');
-            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 2000 }).catch(() => {});
+            await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 5000 }).catch(() => {});
             await new Promise(r => setTimeout(r, 3000));
         }
 
         console.log('Home carregada com sucesso! Acionando o atalho CTRL+F1...');
         
-        // Dispara o atalho para ir direto à tela de requisições pendentes
         await page.keyboard.down('Control');
         await page.keyboard.press('F1');
         await page.keyboard.up('Control');
