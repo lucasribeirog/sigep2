@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import GeradorLaudo from './components/GeradorLaudo';
+import api from '../src/api/pcnet';
 
 export default function App() {
     const [usuario, setUsuario] = useState(null);
@@ -59,10 +60,11 @@ export default function App() {
 
         try {
             setCarregandoIA(true);
-            const response = await fetch('http://localhost:3000/api/analisar-foto', {
-                method: 'POST',
-                body: formData
-            });
+            //const response = await fetch('http://localhost:3000/api/analisar-foto', {
+            //    method: 'POST',
+            //    body: formData
+            //});
+            await api.post('analisar-foto', formData, { responseType: 'json' });
             const resultado = await response.json();
 
             if (response.ok) {

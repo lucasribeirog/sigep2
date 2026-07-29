@@ -1,0 +1,90 @@
+const { iniciarLoginPCNet, confirmarToken2FA, acessarAceiteRequisicoes, obterCsvRequisicoes } = require('../services/pcnetService');
+const fs = require('fs');
+
+async function solicitarLogin(req, res) {
+    try {
+        const { cpf, senha, tipoEmail } = req.body;
+        
+        if (!cpf || !senha) {
+            return res.status(400).json({ erro: 'CPF e senha são obrigatórios.' });
+        }
+
+        // Passa o tipoEmail (se não vier nada, o service assume 'principal' por padrão)
+        const resultado = await iniciarLoginPCNet(cpf, senha, tipoEmail || 'principal');
+        res.json(resultado);
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+}
+
+async function enviarToken(req, res) {
+    try {
+        const { cpf, token } = req.body;
+        if (!cpf || !token) {
+            return res.status(400).json({ erro: 'CPF e o token são obrigatórios.' });
+        }
+        const resultado = await confirmarToken2FA(cpf, token);
+        res.json(resultado);
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+}
+
+async function acessarRequisicoes(req, res) {
+    // Pegamos o CPF e a unidade do corpo da requisição (JSON)
+    const { cpf, codigoUnidade } = req.body; 
+
+    if (!cpf || !codigoUnidade) {
+        return res.status(400).json({ erro: 'CPF e código da unidade são obrigatórios.' });
+    }
+
+    try {
+        console.log(`Iniciando navegação para o CPF: ${cpf}, Unidade: ${codigoUnidade}`);
+        
+        // Dispara o script do Puppeteer
+        const resultado = await acessarAceiteRequisicoes(cpf, codigoUnidade);
+        
+        return res.status(200).json(resultado);
+    } catch (error) {
+        console.error('Erro na rota de acessar requisições:', error);
+        return res.status(500).json({ erro: error.message });
+    }
+}
+
+async function exportarCsv(req, res) {
+    try {
+        const { cpf, codigoUnidade } = req.body;
+
+        if (!cpf) {
+            return res.status(400).json({ erro: 'O CPF é obrigatório.' });
+        }
+
+        console.log(`Iniciando exportação de CSV para o CPF: ${cpf}...`);
+        
+        // Pega o caminho do arquivo baixado pelo service
+        const caminhoArquivo = await obterCsvRequisicoes(cpf, codigoUnidade || 'C0053');
+
+        // Envia o arquivo para o cliente e define o callback de limpeza
+        return res.download(caminhoArquivo, (err) => {
+            if (err) {
+                console.error('Erro ao enviar o arquivo para o cliente:', err);
+            }
+
+            // LIMPEZA AUTOMÁTICA: Apaga o arquivo do servidor assim que o envio termina (com sucesso ou erro)
+            try {
+                if (fs.existsSync(caminhoArquivo)) {
+                    fs.unlinkSync(caminhoArquivo);
+                    console.log('Arquivo temporário limpo com sucesso do servidor.');
+                }
+            } catch (cleanupErr) {
+                console.error('Erro ao tentar apagar o arquivo temporário:', cleanupErr);
+            }
+        });
+
+    } catch (error) {
+        console.error('Erro ao processar exportação de CSV:', error.message);
+        return res.status(400).json({ erro: error.message });
+    }
+}
+
+module.exports = { solicitarLogin, enviarToken, acessarRequisicoes, exportarCsv };

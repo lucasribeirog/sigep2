@@ -4,6 +4,7 @@ const cors = require('cors');
 
 const authRoutes = require('./src/routes/authRoutes');
 const laudoRoutes = require('./src/routes/laudoRoutes');
+const pcnetRoutes = require('./src/routes/pcnetRoutes');
 
 // 1. IMPORTAÇÕES DO SWAGGER
 const swaggerUi = require('swagger-ui-express');
@@ -17,6 +18,7 @@ app.use(cors());
 // Registro das Rotas
 app.use('/api', authRoutes);
 app.use('/api', laudoRoutes);
+app.use('/api/pcnet', pcnetRoutes);
 
 // 2. CADASTRO DA ROTA DO SWAGGER
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));

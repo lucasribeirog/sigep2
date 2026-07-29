@@ -35,6 +35,16 @@ db.serialize(() => {
         atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (especie) REFERENCES catalogo_especies(especie)
     )`);
+
+    //Tabela que guarda estados das sessões do sistema
+    db.run(`
+        CREATE TABLE IF NOT EXISTS sessoes_pcnet (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cpf_usuario TEXT UNIQUE,
+            cookies_json TEXT,
+            atualizado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
 });
 
 module.exports = db;
