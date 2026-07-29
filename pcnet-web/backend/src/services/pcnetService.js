@@ -7,6 +7,89 @@ const path = require('path');
 const sessoesPendentes = new Map();
 const sessoesAtivas = new Map();
 
+// ============================================================================
+// FUNÇÕES AUXILIARES DE BANCO DE DADOS (Promisificadas para usar com async/await)
+// ============================================================================
+const salvarSessaoDB = (cpf, cookiesJson) => {
+    return new Promise((resolve, reject) => {
+        db.run(
+            `INSERT OR REPLACE INTO sessoes_pcnet (cpf_usuario, cookies_json, atualizado_em) VALUES (?, ?, CURRENT_TIMESTAMP)`, 
+            [cpf, cookiesJson], 
+            function(err) {
+                if (err) reject(err);
+                else resolve();
+            }
+        );
+    });
+};
+
+const buscarSessaoDB = (cpf) => {
+    return new Promise((resolve, reject) => {
+        db.get(`SELECT cookies_json FROM sessoes_pcnet WHERE cpf_usuario = ?`, [cpf], (err, row) => {
+            if (err) reject(err);
+            else resolve(row ? row.cookies_json : null);
+        });
+    });
+};
+
+const apagarSessaoDB = (cpf) => {
+    return new Promise((resolve, reject) => {
+        db.run(`DELETE FROM sessoes_pcnet WHERE cpf_usuario = ?`, [cpf], function(err) {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+};
+
+// ============================================================================
+// SISTEMA DE KEEP-ALIVE (Mantém a sessão viva no servidor Java)
+// Roda a cada 12 minutos disparando um pulso invisível para evitar inatividade
+// ============================================================================
+setInterval(async () => {
+    if (sessoesAtivas.size === 0) return;
+
+    console.log('[Keep-Alive] Verificando sessões ativas para envio de pulso de vida...');
+
+    for (const [cpf, sessao] of sessoesAtivas.entries()) {
+        try {
+            const { page } = sessao;
+            if (page && !page.isClosed()) {
+                await page.evaluate(() => {
+                    fetch(window.location.href, { method: 'HEAD' }).catch(() => {});
+                });
+                console.log(`[Keep-Alive] Pulso enviado com sucesso para o CPF ${cpf}.`);
+            } else {
+                sessoesAtivas.delete(cpf);
+            }
+        } catch (error) {
+            console.log(`[Keep-Alive] Falha ao enviar pulso para o CPF ${cpf}.`);
+        }
+    }
+}, 12 * 60 * 1000); // 12 minutos
+
+
+// ============================================================================
+// FUNÇÕES AUXILIARES E DO FLUXO DO PCNET
+// ============================================================================
+
+async function desativarContadorSessao(page) {
+    try {
+        await page.evaluate(() => {
+            window.tempoDeVidaSessao = function() {};
+            window.pararContSessao = function() {};
+            window.pararAnima = function() {};
+            
+            if (typeof relogio !== 'undefined' && relogio) clearTimeout(relogio);
+            if (typeof contPararAnima !== 'undefined' && contPararAnima) clearTimeout(contPararAnima);
+            
+            const divTempo = document.getElementById("tempoRestanteDeSessao");
+            if (divTempo) {
+                divTempo.innerHTML = "<font color='#FFFFFF'><b>Infinito (Robô)</b></font>";
+            }
+        });
+    } catch (error) {}
+}
+
 async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
     const browser = await puppeteer.launch({
         browser: 'firefox',
@@ -27,23 +110,17 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
     });
 
     const page = await browser.newPage();
-
-    page.on('dialog', async dialog => {
-        await dialog.dismiss();
-    });
+    page.on('dialog', async dialog => await dialog.dismiss());
 
     try {
         await page.goto('https://www.pcnet.mg.gov.br/APP/', { waitUntil: 'networkidle2' });
+        await desativarContadorSessao(page);
 
-        // 1. Preenche CPF e Senha com validação de existência dos inputs
         await page.waitForSelector('input[name="j_username"]', { timeout: 15000 });
         await page.type('input[name="j_username"]', cpf);
         await page.type('input[name="j_password"]', senha);
-
-        // 2. Submete o formulário
         await page.keyboard.press('Enter');
 
-        // 3. Aguarda os botões de e-mail do 2FA OU detecta se o login falhou na mesma tela
         console.log('Aguardando os botões de e-mail aparecerem no HTML...');
         
         const resultadoLogin = await Promise.race([
@@ -52,7 +129,6 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
                 return spans.some(span => span.textContent && span.textContent.includes('E-mail'));
             }, { timeout: 30000 }).then(() => 'SUCESSO_2FA'),
             
-            // Detecta se apareceu mensagem de erro de credenciais na tela de login
             page.waitForSelector('.error, .msg_erro, div[style*="color: red"]', { timeout: 5000 })
                 .then(() => 'ERRO_CREDENCIAL')
                 .catch(() => 'TIMEOUT_IGNORADO')
@@ -61,18 +137,15 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
         if (resultadoLogin === 'ERRO_CREDENCIAL') {
             throw new Error('Falha no login: Credenciais inválidas ou erro reportado pelo sistema.');
         }
-        if (resultadoLogin === 'TIMEOUT_IGNORADO') {
-            // Se o race falhou na verificação de erro, deixa o fluxo tentar o próximo passo ou cair no timeout principal
-        }
 
-        // 4. Identifica e clica no e-mail desejado
+        await desativarContadorSessao(page);
+
         const textoBusca = tipoEmail.toLowerCase() === 'secundario' ? 'E-mail Secundário' : 'E-mail Principal';
         console.log(`Procurando e clicando na opção: "${textoBusca}"`);
 
         const clicouComSucesso = await page.evaluate((busca) => {
             const spans = Array.from(document.querySelectorAll('span.z-label'));
             const spanEmail = spans.find(el => el.textContent && el.textContent.trim().includes(busca));
-            
             if (spanEmail) {
                 const divClicavel = spanEmail.closest('.z-vlayout-inner') || spanEmail.parentElement || spanEmail;
                 divClicavel.click();
@@ -85,22 +158,13 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
             throw new Error(`Não foi possível encontrar ou clicar na opção "${textoBusca}".`);
         }
 
-        // 5. Aguarda o processamento do envio do código
         await new Promise(r => setTimeout(r, 4000));
-
         sessoesPendentes.set(cpf, { browser, page, tipoEmail });
 
-        return { 
-            status: 'REQUER_2FA', 
-            mensagem: `Canal (${textoBusca}) selecionado com sucesso! O código de 2FA foi enviado.` 
-        };
+        return { status: 'REQUER_2FA', mensagem: `Canal (${textoBusca}) selecionado com sucesso! O código foi enviado.` };
 
     } catch (error) {
-        if (browser && !browser.isConnected()) {
-            await browser.close().catch(() => {});
-        } else if (page) {
-            await browser.close().catch(() => {});
-        }
+        if (browser) await browser.close().catch(() => {});
         sessoesPendentes.delete(cpf);
         throw new Error('Falha no processo inicial do PCNet: ' + error.message);
     }
@@ -108,20 +172,16 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
 
 async function confirmarToken2FA(cpf, token) {
     const sessao = sessoesPendentes.get(cpf);
-    if (!sessao) {
-        throw new Error('Nenhuma sessão pendente de 2FA encontrada para este CPF. Faça o login novamente.');
-    }
+    if (!sessao) throw new Error('Nenhuma sessão pendente de 2FA encontrada. Faça o login novamente.');
 
     const { browser, page } = sessao;
 
     try {
         console.log('Aguardando as caixinhas do token carregarem...');
-        
         await page.waitForSelector('input.code-input', { timeout: 15000 });
         const inputsToken = await page.$$('input.code-input');
         
         if (inputsToken.length === 6) {
-            console.log('Digitando o token nas caixas...');
             for (let i = 0; i < token.length; i++) {
                 await inputsToken[i].type(token[i]);
                 await new Promise(r => setTimeout(r, 100)); 
@@ -131,32 +191,19 @@ async function confirmarToken2FA(cpf, token) {
             throw new Error(`Encontradas ${inputsToken.length} caixas de token, mas eram esperadas 6.`);
         }
 
-        console.log('Procurando o botão Verificar para clicar...');
-        
         const botaoSelector = await page.evaluate(() => {
             const botoes = Array.from(document.querySelectorAll('button.z-button'));
             const btnVerificar = botoes.find(b => b.textContent && b.textContent.includes('erificar'));
-            
             if (btnVerificar) {
-                if (btnVerificar.id) {
-                    return '#' + btnVerificar.id;
-                } else {
-                    btnVerificar.setAttribute('data-robo-clique', 'aqui');
-                    return 'button[data-robo-clique="aqui"]';
-                }
+                if (btnVerificar.id) return '#' + btnVerificar.id;
+                btnVerificar.setAttribute('data-robo-clique', 'aqui');
+                return 'button[data-robo-clique="aqui"]';
             }
             return null;
         });
 
-        if (botaoSelector) {
-            console.log(`Botão encontrado! Selector: ${botaoSelector}. Clicando...`);
-            await page.click(botaoSelector);
-        } else {
-            console.log('Aviso: Botão "Verificar" não encontrado pelo seletor. Tentando avançar pelo Enter...');
-        }
+        if (botaoSelector) await page.click(botaoSelector);
 
-        console.log('Aguardando validação e carregamento da página principal...');
-        
         try {
             await Promise.race([
                 page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }),
@@ -167,39 +214,82 @@ async function confirmarToken2FA(cpf, token) {
         }
 
         await new Promise(r => setTimeout(r, 3000));
-        
+        await desativarContadorSessao(page);
+
         const urlAtual = await page.url();
         if (urlAtual.includes('validacao_duas_etapas')) {
             throw new Error('Token inválido ou incorreto: O sistema continuou preso na tela de 2FA.');
         }
 
-        console.log('Sucesso comprovado! Sessão autenticada mantida ativa em memória.');
+        // --- SALVA OS COOKIES GLOBAIS (PCNET + SSO PRODEMGE) NO BANCO ---
+        const cookies = await browser.cookies();
+        
+        await salvarSessaoDB(cpf, JSON.stringify(cookies));
+        console.log('[Sessão] Todos os cookies globais do Firefox foram salvos no Banco de Dados SQLite!');
+                
 
         sessoesAtivas.set(cpf, { browser, page });
         sessoesPendentes.delete(cpf);
 
-        return { 
-            status: 'SUCESSO', 
-            mensagem: 'Login validado com sucesso real! Sessão mantida ativa em segundo plano.' 
-        };
+        return { status: 'SUCESSO', mensagem: 'Login validado com sucesso! Sessão salva e mantida ativa.' };
 
     } catch (error) {
-        try {
-            if (browser && page && !page.isClosed()) {
-                await browser.close();
-            }
-        } catch (e) {}
-        
+        if (browser && page && !page.isClosed()) await browser.close().catch(() => {});
         sessoesPendentes.delete(cpf);
         throw new Error('Erro ao validar o token 2FA: ' + error.message);
     }
 }
 
 async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
-    const sessaoAtiva = sessoesAtivas.get(cpf);
+    let sessaoAtiva = sessoesAtivas.get(cpf);
 
+    // --- TENTA RECUPERAR A SESSÃO DO BANCO SE NÃO ESTIVER NA RAM ---
     if (!sessaoAtiva) {
-        throw new Error('Nenhuma sessão ativa encontrada para este CPF na memória. Faça o login e o 2FA primeiro.');
+        const cookiesData = await buscarSessaoDB(cpf);
+
+        if (cookiesData) {
+            console.log(`[Sessão] Restaurando sessão do Banco de Dados para o CPF ${cpf}...`);
+            
+            const browser = await puppeteer.launch({
+                browser: 'firefox',
+                headless: false, 
+                defaultViewport: null,
+                args: ['--start-maximized']
+            });
+
+            const browserContext = browser.defaultBrowserContext();
+            const cookies = JSON.parse(cookiesData);
+            await browserContext.setCookie(...cookies);
+
+            const page = await browser.newPage();
+            
+            // ADICIONE ISTO AQUI TAMBÉM: Trata diálogos nativos na sessão restaurada
+            page.on('dialog', async dialog => await dialog.dismiss());
+
+            await page.goto('https://www.pcnet.mg.gov.br/APP/', { waitUntil: 'networkidle2' });
+            // Tenta fechar automaticamente caso apareça algum modal de erro na tela
+            await page.evaluate(() => {
+                const btnFecharAlerta = document.querySelector('.alertblock button, .msg_erro button, input[value="Fechar"], input[value="OK"]');
+                if (btnFecharAlerta) btnFecharAlerta.click();
+            }).catch(() => {});
+
+            await desativarContadorSessao(page);
+
+            const urlAtual = page.url();
+            // Verifica se o PCNet rejeitou o cookie (expirado no servidor)
+            if (urlAtual.includes('loginVM.zul') || urlAtual.includes('seg.id')) {
+                console.log('[Sessão] Cookie expirado no servidor do PCNet. Limpando do banco.');
+                await browser.close().catch(() => {});
+                await apagarSessaoDB(cpf); // Apaga a sessão expirada do banco
+                throw new Error('A sessão salva expirou. Faça o login e o 2FA novamente.');
+            }
+
+            sessoesAtivas.set(cpf, { browser, page });
+            sessaoAtiva = sessoesAtivas.get(cpf);
+            console.log('[Sessão] Sessão restaurada com sucesso!');
+        } else {
+            throw new Error('Nenhuma sessão ativa encontrada. Faça o login e o 2FA primeiro.');
+        }
     }
 
     const { page, browser } = sessaoAtiva;
@@ -212,10 +302,13 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
 
         console.log('Navegando para a página principal do PCNet...');
         await page.goto('https://www.pcnet.mg.gov.br/APP/', { waitUntil: 'networkidle2' });
+        
+        await desativarContadorSessao(page);
 
         const urlAtual = page.url();
         if (urlAtual.includes('loginVM.zul') || urlAtual.includes('seg.id')) {
             sessoesAtivas.delete(cpf);
+            await apagarSessaoDB(cpf); // Limpa do banco se for detectada queda natural
             throw new Error('A sessão expirou no servidor. Faça o login novamente.');
         }
 
@@ -228,14 +321,12 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
             await page.evaluate(() => {
                 const botoes = Array.from(document.querySelectorAll('button, input[type="button"], input[type="submit"]'));
                 const btnConfirmar = botoes.find(b => (b.textContent && b.textContent.includes('Confirmar')) || b.value === 'Confirmar');
-                if (btnConfirmar) {
-                    btnConfirmar.click();
-                }
+                if (btnConfirmar) btnConfirmar.click();
             });
 
-            console.log('Aguardando a home da unidade carregar...');
             await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 5000 }).catch(() => {});
             await new Promise(r => setTimeout(r, 3000));
+            await desativarContadorSessao(page);
         }
 
         console.log('Home carregada com sucesso! Acionando o atalho CTRL+F1...');
@@ -245,8 +336,8 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
         await page.keyboard.up('Control');
 
         await new Promise(r => setTimeout(r, 4000));
-        console.log('Sucesso! Estamos na tela de Aceite de Requisição.');
-
+        await desativarContadorSessao(page);
+        
         return { status: 'SUCESSO', mensagem: 'Unidade selecionada e tela de aceite acessada com sucesso!' };
 
     } catch (error) {
@@ -255,26 +346,18 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
 }
 
 async function obterCsvRequisicoes(cpf, codigoUnidade = 'C0053') {
-    // 1. Acessa a tela de requisições pendentes
     await acessarAceiteRequisicoes(cpf, codigoUnidade);
 
     const sessaoAtiva = sessoesAtivas.get(cpf);
-    if (!sessaoAtiva) {
-        throw new Error('Sessão perdida após acessar as requisições.');
-    }
-
+    if (!sessaoAtiva) throw new Error('Sessão perdida após acessar as requisições.');
     const { page } = sessaoAtiva;
 
     try {
         console.log('Disparando a pesquisa (F9)...');
         const botaoPesquisar = await page.$('input#btnPesquisar');
-        if (botaoPesquisar) {
-            await botaoPesquisar.click();
-        } else {
-            await page.keyboard.press('F9');
-        }
+        if (botaoPesquisar) await botaoPesquisar.click();
+        else await page.keyboard.press('F9');
 
-        // ESPERA SEGURA: Damos 8 segundos para o servidor do PCNet processar e listar TODAS as requisições
         console.log('Aguardando o servidor processar todas as requisições...');
         await new Promise(r => setTimeout(r, 8000));
 
@@ -289,18 +372,12 @@ async function obterCsvRequisicoes(cpf, codigoUnidade = 'C0053') {
             return false;
         });
 
-        if (!clicouExportar) {
-            throw new Error('O botão "Exportar CSV" não foi encontrado na tela.');
-        }
+        if (!clicouExportar) throw new Error('O botão "Exportar CSV" não foi encontrado na tela.');
 
-        // Pressiona Enter caso o Firefox abra a janela nativa de confirmação de salvamento
         await new Promise(r => setTimeout(r, 1500));
         await page.keyboard.press('Enter');
 
-        // Aponta diretamente para a pasta Downloads oficial do Windows do seu PC
         const downloadPath = path.join(os.homedir(), 'Downloads');
-
-        // Monitora a pasta do Windows para pegar o arquivo CSV recém-baixado
         console.log('Aguardando o arquivo aparecer na pasta Downloads do Windows...');
         let arquivoEncontrado = null;
         
@@ -308,16 +385,11 @@ async function obterCsvRequisicoes(cpf, codigoUnidade = 'C0053') {
             await new Promise(r => setTimeout(r, 1000));
             if (fs.existsSync(downloadPath)) {
                 const arquivos = fs.readdirSync(downloadPath);
-                // Filtra arquivos temporários (.part, .tmp) e pega os CSVs/XLS mais recentes criados nos últimos segundos
                 const csvs = arquivos.filter(f => (f.endsWith('.csv') || f.endsWith('.xls') || f.endsWith('.ods')) && !f.endsWith('.part') && !f.endsWith('.tmp'));
                 
                 if (csvs.length > 0) {
-                    csvs.sort((a, b) => {
-                        return fs.statSync(path.join(downloadPath, b)).mtimeMs - fs.statSync(path.join(downloadPath, a)).mtimeMs;
-                    });
-                    
+                    csvs.sort((a, b) => fs.statSync(path.join(downloadPath, b)).mtimeMs - fs.statSync(path.join(downloadPath, a)).mtimeMs);
                     const arquivoMaisRecente = path.join(downloadPath, csvs[0]);
-                    // Garante que o arquivo foi modificado nos últimos 15 segundos (para não pegar um CSV antigo)
                     const stats = fs.statSync(arquivoMaisRecente);
                     const agora = new Date().getTime();
                     if ((agora - stats.mtimeMs) < 15000) {
@@ -328,9 +400,7 @@ async function obterCsvRequisicoes(cpf, codigoUnidade = 'C0053') {
             }
         }
 
-        if (!arquivoEncontrado) {
-            throw new Error('O arquivo CSV não foi baixado pelo navegador a tempo.');
-        }
+        if (!arquivoEncontrado) throw new Error('O arquivo CSV não foi baixado pelo navegador a tempo.');
 
         console.log('Arquivo capturado com sucesso:', arquivoEncontrado);
         return arquivoEncontrado;
@@ -342,35 +412,25 @@ async function obterCsvRequisicoes(cpf, codigoUnidade = 'C0053') {
 
 async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
     await acessarAceiteRequisicoes(cpf, codigoUnidade);
-
     const sessaoAtiva = sessoesAtivas.get(cpf);
     if (!sessaoAtiva) throw new Error('Sessão perdida. Faça o login novamente.');
-
     const { page, browser } = sessaoAtiva;
-    let popupFavPage = null;
-    let popupCustodiaPage = null;
+    let popupFavPage = null, popupCustodiaPage = null;
 
     try {
         console.log('Abrindo a tela de Cadeia de Custódia...');
         let pagesAntigas = await browser.pages();
-
-        // 1. Clica no ícone na tela principal
         const clicouCustodia = await page.evaluate(() => {
             const icone = document.querySelector('img[src*="ico_cadeia_custodia.png"]');
-            if (icone) {
-                const link = icone.closest('a');
-                if (link) {
-                    link.click();
-                    return true;
-                }
+            if (icone && icone.closest('a')) {
+                icone.closest('a').click();
+                return true;
             }
             return false;
         });
 
-        if (!clicouCustodia) throw new Error('Ícone de Cadeia de Custódia não encontrado na tela principal.');
+        if (!clicouCustodia) throw new Error('Ícone de Cadeia de Custódia não encontrado.');
 
-        // 2. Captura a 1ª Pop-up (Movimentação FAV) com timeout seguro
-        console.log('Aguardando a primeira janela pop-up abrir...');
         for (let i = 0; i < 25; i++) {
             await new Promise(r => setTimeout(r, 1000));
             const pagesAtuais = await browser.pages();
@@ -380,53 +440,37 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
             }
         }
 
-        if (!popupFavPage) throw new Error('O pop-up de Movimentação FAV não abriu dentro do tempo limite.');
-        console.log('Pop-up FAV capturado.');
-
-        // Garante que a página está fechada caso ocorra exceção fatal
+        if (!popupFavPage) throw new Error('O pop-up de Movimentação FAV não abriu.');
+        await desativarContadorSessao(popupFavPage);
         popupFavPage.on('close', () => { popupFavPage = null; });
 
-        // 3. Preenche a FAV e pesquisa
         await popupFavPage.waitForSelector('#numeroDaFAV_Arg', { timeout: 20000 });
-        console.log(`Preenchendo a FAV: ${numeroFav}...`);
         await popupFavPage.click('#numeroDaFAV_Arg', { clickCount: 3 });
         await popupFavPage.keyboard.press('Backspace');
         await popupFavPage.type('#numeroDaFAV_Arg', String(numeroFav));
 
-        console.log('Pesquisando a FAV...');
         await popupFavPage.click('#btnPesquisar');
         await new Promise(r => setTimeout(r, 4000));
 
-        // 4. Marca o checkbox na tabela
-        console.log('Marcando o item na tabela...');
         const selecionou = await popupFavPage.evaluate((favAlvo) => {
-            const linhas = Array.from(document.querySelectorAll('tr'));
-            for (const linha of linhas) {
+            for (const linha of Array.from(document.querySelectorAll('tr'))) {
                 if (linha.textContent.includes(String(favAlvo))) {
                     const cb = linha.querySelector('input[type="checkbox"][name*="flagSelecionada"]');
-                    if (cb) {
-                        cb.click();
-                        return true;
-                    }
+                    if (cb) { cb.click(); return true; }
                 }
             }
             return false;
         }, numeroFav);
 
-        if (!selecionou) throw new Error(`Item da FAV ${numeroFav} não encontrado na tabela de resultados.`);
+        if (!selecionou) throw new Error(`Item da FAV ${numeroFav} não encontrado.`);
         await new Promise(r => setTimeout(r, 1500));
 
         pagesAntigas = await browser.pages();
-
-        // 5. Clica no botão "Sob Custódia"
-        console.log('Clicando em "Sob Custódia"...');
         await popupFavPage.evaluate(() => {
             const btn = document.querySelector('input[value="Sob Custódia"]') || document.getElementById('botao_menu');
             if (btn) btn.click();
         });
 
-        // 6. Captura a 2ª Pop-up (A aba de Sob Custódia)
-        console.log('Aguardando a janela pop-up de Sob Custódia abrir...');
         for (let i = 0; i < 25; i++) {
             await new Promise(r => setTimeout(r, 1000));
             const pagesAtuais = await browser.pages();
@@ -436,14 +480,10 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
             }
         }
 
-        if (!popupCustodiaPage) throw new Error('A janela pop-up de Sob Custódia não abriu.');
-        console.log('Pop-up de Sob Custódia capturado com sucesso!');
-
-        // 7. Aguarda o #finalidade2 carregar na aba de custódia
+        if (!popupCustodiaPage) throw new Error('A janela de Sob Custódia não abriu.');
+        await desativarContadorSessao(popupCustodiaPage);
         await popupCustodiaPage.waitForSelector('#finalidade2', { timeout: 15000 });
 
-        // 8. Preenche "Exame Pericial" e o Lacre
-        console.log('Preenchendo finalidade e lacre...');
         await popupCustodiaPage.evaluate((lacreInfo) => {
             const radioPericial = document.getElementById('finalidade2');
             if (radioPericial) {
@@ -456,9 +496,7 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
                 const radioSim = document.getElementById('houveRompimentoLacre0');
                 if (radioSim) {
                     radioSim.click();
-                    if (typeof habilitarDesabilitarCampoNovoInvolucro === 'function') {
-                        habilitarDesabilitarCampoNovoInvolucro(radioSim);
-                    }
+                    if (typeof habilitarDesabilitarCampoNovoInvolucro === 'function') habilitarDesabilitarCampoNovoInvolucro(radioSim);
                 }
                 const inputLacre = document.getElementById('involucroNumero');
                 if (inputLacre) {
@@ -470,85 +508,60 @@ async function movimentarFav(cpf, codigoUnidade, numeroFav, novoLacre = null) {
                 const radioNao = document.getElementById('houveRompimentoLacre1');
                 if (radioNao) {
                     radioNao.click();
-                    if (typeof habilitarDesabilitarCampoNovoInvolucro === 'function') {
-                        habilitarDesabilitarCampoNovoInvolucro(radioNao);
-                    }
+                    if (typeof habilitarDesabilitarCampoNovoInvolucro === 'function') habilitarDesabilitarCampoNovoInvolucro(radioNao);
                 }
             }
         }, novoLacre);
 
-        // 9. Clica em SALVAR e valida se o sistema recusou por regra de negócio
-        console.log('Salvando a movimentação...');
         await new Promise(r => setTimeout(r, 1500));
         await popupCustodiaPage.click('#btnGrava');
         await new Promise(r => setTimeout(r, 4000));
 
-        const mensagemErroSistema = await popupCustodiaPage.evaluate(() => {
+        const msgErro = await popupCustodiaPage.evaluate(() => {
             const elemErro = document.querySelector('.msg_erro, td.msg_erro, div.msg_erro');
             return elemErro && elemErro.textContent.trim() !== '' ? elemErro.textContent.trim() : null;
         });
 
-        if (mensagemErroSistema) {
-            throw new Error(`Sistema recusou a operação: ${mensagemErroSistema}`);
-        }
+        if (msgErro) throw new Error(`Sistema recusou a operação: ${msgErro}`);
 
-        // 10. Fecha a aba de Custódia com segurança
-        try {
-            await popupCustodiaPage.click('#fechar_id');
-        } catch (e) {
-            if (!popupCustodiaPage.isClosed()) await popupCustodiaPage.close();
-        }
+        try { await popupCustodiaPage.click('#fechar_id'); } catch (e) { if (!popupCustodiaPage.isClosed()) await popupCustodiaPage.close(); }
         await new Promise(r => setTimeout(r, 2000));
 
-        // 11. Limpa e fecha a aba principal da FAV
         if (popupFavPage && !popupFavPage.isClosed()) {
             await popupFavPage.click('#btnLimpar');
             await new Promise(r => setTimeout(r, 1500));
             await popupFavPage.click('#fechar_id');
         }
 
-        console.log('Fluxo completo da FAV executado com sucesso!');
-        return { status: 'SUCESSO', mensagem: `FAV ${numeroFav} movimentada para Sob Custódia com sucesso!` };
+        return { status: 'SUCESSO', mensagem: `FAV ${numeroFav} movimentada com sucesso!` };
 
     } catch (error) {
-        // Garante limpeza de abas órfãs em caso de exceção
         try { if (popupCustodiaPage && !popupCustodiaPage.isClosed()) await popupCustodiaPage.close(); } catch (err) {}
         try { if (popupFavPage && !popupFavPage.isClosed()) await popupFavPage.close(); } catch (err) {}
-
         throw new Error('Erro ao movimentar a FAV: ' + error.message);
     }
 }
 
 async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
     await acessarAceiteRequisicoes(cpf, codigoUnidade);
-
     const sessaoAtiva = sessoesAtivas.get(cpf);
     if (!sessaoAtiva) throw new Error('Sessão perdida. Faça o login novamente.');
-
     const { page, browser } = sessaoAtiva;
     const resultados = [];
     let popupFavPage = null;
 
     try {
-        console.log('Abrindo a tela de Cadeia de Custódia...');
         let pagesAntigas = await browser.pages();
-
-        // 1. Clica no ícone na tela principal
         const clicouCustodia = await page.evaluate(() => {
             const icone = document.querySelector('img[src*="ico_cadeia_custodia.png"]');
-            if (icone) {
-                const link = icone.closest('a');
-                if (link) {
-                    link.click();
-                    return true;
-                }
+            if (icone && icone.closest('a')) {
+                icone.closest('a').click(); return true;
             }
             return false;
         });
 
         if (!clicouCustodia) throw new Error('Ícone de Cadeia de Custódia não encontrado.');
 
-        // Captura o pop-up principal de FAV
         for (let i = 0; i < 25; i++) {
             await new Promise(r => setTimeout(r, 1000));
             const pagesAtuais = await browser.pages();
@@ -559,8 +572,8 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
         }
 
         if (!popupFavPage) throw new Error('O pop-up de Movimentação FAV não abriu.');
+        await desativarContadorSessao(popupFavPage);
 
-        // Loop para processar cada FAV da lista
         for (const item of listaFavs) {
             const { numeroFav, novoLacre } = item;
             console.log(`\n--- Processando FAV: ${numeroFav} ---`);
@@ -568,12 +581,9 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
 
             try {
                 await popupFavPage.waitForSelector('#btnLimpar', { visible: true, timeout: 15000 });
-
-                // Limpa a tela antes de cada busca
                 await popupFavPage.click('#btnLimpar');
                 await new Promise(r => setTimeout(r, 1500));
 
-                // Digita e pesquisa
                 await popupFavPage.waitForSelector('#numeroDaFAV_Arg', { visible: true, timeout: 15000 });
                 await popupFavPage.click('#numeroDaFAV_Arg', { clickCount: 3 });
                 await popupFavPage.keyboard.press('Backspace');
@@ -582,37 +592,29 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
                 await popupFavPage.click('#btnPesquisar');
                 await new Promise(r => setTimeout(r, 4000));
 
-                // Valida e marca o checkbox
                 const selecionou = await popupFavPage.evaluate((favAlvo) => {
-                    const linhas = Array.from(document.querySelectorAll('tr'));
-                    for (const linha of linhas) {
-                        const textoLinha = linha.textContent || '';
-                        if (textoLinha.includes(String(favAlvo))) {
+                    for (const linha of Array.from(document.querySelectorAll('tr'))) {
+                        if (linha.textContent.includes(String(favAlvo))) {
                             const cb = linha.querySelector('input[type="checkbox"][name*="flagSelecionada"]');
-                            if (cb) {
-                                cb.click();
-                                return true;
-                            }
+                            if (cb) { cb.click(); return true; }
                         }
                     }
                     return false;
                 }, numeroFav);
 
                 if (!selecionou) {
-                    resultados.push({ fav: numeroFav, status: 'ERRO', mensagem: 'Item não encontrado na tabela' });
+                    resultados.push({ fav: numeroFav, status: 'ERRO', mensagem: 'Não encontrado na tabela' });
                     continue;
                 }
 
                 await new Promise(r => setTimeout(r, 1500));
                 let pagesAntesCustodia = await browser.pages();
 
-                // Clica em "Sob Custódia"
                 await popupFavPage.evaluate(() => {
                     const btn = document.querySelector('input[value="Sob Custódia"]') || document.getElementById('botao_menu');
                     if (btn) btn.click();
                 });
 
-                // Captura a aba de custódia
                 for (let i = 0; i < 15; i++) {
                     await new Promise(r => setTimeout(r, 1000));
                     const pagesAtuais = await browser.pages();
@@ -623,25 +625,16 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
                 }
 
                 if (!popupCustodiaPage) throw new Error('A aba de Sob Custódia não abriu.');
-
-                // Preenche os campos na aba de custódia
+                await desativarContadorSessao(popupCustodiaPage);
                 await popupCustodiaPage.waitForSelector('#finalidade2', { timeout: 15000 });
+                
                 await popupCustodiaPage.evaluate((lacreInfo) => {
                     const radioPericial = document.getElementById('finalidade2');
-                    if (radioPericial) {
-                        radioPericial.checked = true;
-                        radioPericial.click();
-                        if (typeof campoAlterado === 'function') campoAlterado();
-                    }
-
+                    if (radioPericial) { radioPericial.checked = true; radioPericial.click(); if(typeof campoAlterado==='function')campoAlterado(); }
+                    
                     if (lacreInfo && lacreInfo.trim() !== '') {
                         const radioSim = document.getElementById('houveRompimentoLacre0');
-                        if (radioSim) {
-                            radioSim.click();
-                            if (typeof habilitarDesabilitarCampNovoInvolucro === 'function') {
-                                habilitarDesabilitarCampNovoInvolucro(radioSim);
-                            }
-                        }
+                        if (radioSim) { radioSim.click(); if(typeof habilitarDesabilitarCampNovoInvolucro==='function') habilitarDesabilitarCampNovoInvolucro(radioSim); }
                         const inputLacre = document.getElementById('involucroNumero');
                         if (inputLacre) {
                             inputLacre.value = lacreInfo;
@@ -650,54 +643,34 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
                         }
                     } else {
                         const radioNao = document.getElementById('houveRompimentoLacre1');
-                        if (radioNao) {
-                            radioNao.click();
-                            if (typeof habilitarDesabilitarCampNovoInvolucro === 'function') {
-                                habilitarDesabilitarCampNovoInvolucro(radioNao);
-                            }
-                        }
+                        if (radioNao) { radioNao.click(); if(typeof habilitarDesabilitarCampNovoInvolucro==='function') habilitarDesabilitarCampNovoInvolucro(radioNao); }
                     }
                 }, novoLacre);
 
-                // Salva a movimentação e checa erros do sistema
                 await new Promise(r => setTimeout(r, 1000));
                 await popupCustodiaPage.click('#btnGrava');
                 await new Promise(r => setTimeout(r, 3000));
 
-                const mensagemErroSistema = await popupCustodiaPage.evaluate(() => {
+                const msgErro = await popupCustodiaPage.evaluate(() => {
                     const elemErro = document.querySelector('.msg_erro, td.msg_erro, div.msg_erro');
                     return elemErro && elemErro.textContent.trim() !== '' ? elemErro.textContent.trim() : null;
                 });
 
-                if (mensagemErroSistema) {
-                    throw new Error(`Sistema recusou: ${mensagemErroSistema}`);
-                }
+                if (msgErro) throw new Error(`Recusado: ${msgErro}`);
 
-                // Fecha a aba de custódia
-                try {
-                    await popupCustodiaPage.click('#fechar_id');
-                } catch (e) {
-                    if (!popupCustodiaPage.isClosed()) await popupCustodiaPage.close();
-                }
+                try { await popupCustodiaPage.click('#fechar_id'); } catch (e) { if (!popupCustodiaPage.isClosed()) await popupCustodiaPage.close(); }
                 await new Promise(r => setTimeout(r, 2000));
 
                 resultados.push({ fav: numeroFav, status: 'SUCESSO' });
-                console.log(`FAV ${numeroFav} processada com sucesso.`);
+                console.log(`FAV ${numeroFav} processada.`);
 
             } catch (errItem) {
                 console.error(`Erro na FAV ${numeroFav}:`, errItem.message);
                 resultados.push({ fav: numeroFav, status: 'ERRO', mensagem: errItem.message });
-
-                // Se der erro nesta FAV do lote, garante que fecha a aba de custódia caso tenha ficado aberta
-                try {
-                    if (popupCustodiaPage && !popupCustodiaPage.isClosed()) {
-                        await popupCustodiaPage.close();
-                    }
-                } catch (eClose) {}
+                try { if (popupCustodiaPage && !popupCustodiaPage.isClosed()) await popupCustodiaPage.close(); } catch (eClose) {}
             }
         }
 
-        // Encerramento final seguro da janela principal de FAV
         try {
             if (popupFavPage && !popupFavPage.isClosed()) {
                 await popupFavPage.click('#btnLimpar');
@@ -711,10 +684,7 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
         return { status: 'CONCLUIDO', detalhes: resultados };
 
     } catch (error) {
-        try {
-            if (popupFavPage && !popupFavPage.isClosed()) await popupFavPage.close();
-        } catch (e) {}
-
+        try { if (popupFavPage && !popupFavPage.isClosed()) await popupFavPage.close(); } catch (e) {}
         throw new Error('Erro geral no lote de FAVs: ' + error.message);
     }
 }
