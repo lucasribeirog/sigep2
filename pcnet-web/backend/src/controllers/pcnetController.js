@@ -1,5 +1,5 @@
 const { iniciarLoginPCNet, confirmarToken2FA, acessarAceiteRequisicoes,
-     obterCsvRequisicoes, movimentarFav, movimentarFavsLote } = require('../services/pcnetService');
+     obterCsvRequisicoes, movimentarFav, movimentarFavsLote, encerrarSessao } = require('../services/pcnetService');
 const fs = require('fs');
 
 async function solicitarLogin(req, res) {
@@ -146,5 +146,25 @@ async function processarMovimentacaoLote(req, res) {
     }
 }
 
+async function logout(req, res) {
+    try {
+        const { cpf } = req.body; // Identificador da sessão (CPF ou e-mail, conforme seu service)
+
+        if (cpf) {
+            await encerrarSessao(cpf);
+        }
+
+        return res.status(200).json({ 
+            status: 'SUCESSO', 
+            mensagem: 'Sessão encerrada e limpa com sucesso.' 
+        });
+    } catch (error) {
+        console.error('Erro ao processar o logout:', error);
+        return res.status(500).json({ 
+            erro: 'Erro interno ao tentar encerrar a sessão.' 
+        });
+    }
+}
+
 module.exports = { solicitarLogin, enviarToken, acessarRequisicoes, 
-    exportarCsv, movimentarFavRoute, processarMovimentacaoLote};
+    exportarCsv, movimentarFavRoute, processarMovimentacaoLote, logout};

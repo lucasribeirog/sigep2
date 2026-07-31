@@ -8,7 +8,7 @@ const sessoesPendentes = new Map();
 const sessoesAtivas = new Map();
 
 // ============================================================================
-// FUNÇÕES AUXILIARES DE BANCO DE DADOS (Promisificadas para usar com async/await)
+// FUNÇÕES AUXILIARES DE BANCO DE DADOS
 // ============================================================================
 const salvarSessaoDB = (cpf, cookiesJson) => {
     return new Promise((resolve, reject) => {
@@ -42,8 +42,7 @@ const apagarSessaoDB = (cpf) => {
 };
 
 // ============================================================================
-// SISTEMA DE KEEP-ALIVE (Mantém a sessão viva no servidor Java)
-// Roda a cada 12 minutos disparando um pulso invisível para evitar inatividade
+// SISTEMA DE KEEP-ALIVE (Agora com detector de tela de login)
 // ============================================================================
 setInterval(async () => {
     if (sessoesAtivas.size === 0) return;
@@ -52,8 +51,19 @@ setInterval(async () => {
 
     for (const [cpf, sessao] of sessoesAtivas.entries()) {
         try {
-            const { page } = sessao;
+            const { page, browser } = sessao;
             if (page && !page.isClosed()) {
+                const urlAtual = page.url();
+                
+                // DETECTOR DE SESSÃO MORTA
+                if (urlAtual.includes('loginVM.zul') || urlAtual.includes('seg.id')) {
+                    console.log(`[Keep-Alive] ALERTA: A sessão do CPF ${cpf} expirou no servidor. Fechando aba zumbi...`);
+                    await browser.close().catch(() => {});
+                    sessoesAtivas.delete(cpf);
+                    await apagarSessaoDB(cpf);
+                    continue; // Pula para a próxima sessão
+                }
+
                 await page.evaluate(() => {
                     fetch(window.location.href, { method: 'HEAD' }).catch(() => {});
                 });
@@ -65,7 +75,7 @@ setInterval(async () => {
             console.log(`[Keep-Alive] Falha ao enviar pulso para o CPF ${cpf}.`);
         }
     }
-}, 12 * 60 * 1000); // 12 minutos
+}, 12 * 60 * 1000); 
 
 
 // ============================================================================
@@ -204,6 +214,26 @@ async function confirmarToken2FA(cpf, token) {
 
         if (botaoSelector) await page.click(botaoSelector);
 
+        console.log('Aguardando resposta do servidor...');
+        await new Promise(r => setTimeout(r, 2000));
+
+        const modalErro = await page.evaluate(() => {
+            const elementosTexto = Array.from(document.querySelectorAll('div, span, td, p'));
+            const erroEncontrado = elementosTexto.find(el => 
+                el.textContent && (el.textContent.includes('Código inválido') || el.textContent.includes('código inválido'))
+            );
+            if (erroEncontrado) {
+                return 'O código digitado é inválido ou já expirou.';
+            }
+            return null;
+        });
+
+        if (modalErro) {
+            await browser.close();
+            sessoesPendentes.delete(cpf);
+            throw new Error(modalErro);
+        }
+
         try {
             await Promise.race([
                 page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 }),
@@ -221,12 +251,9 @@ async function confirmarToken2FA(cpf, token) {
             throw new Error('Token inválido ou incorreto: O sistema continuou preso na tela de 2FA.');
         }
 
-        // --- SALVA OS COOKIES GLOBAIS (PCNET + SSO PRODEMGE) NO BANCO ---
         const cookies = await browser.cookies();
-        
         await salvarSessaoDB(cpf, JSON.stringify(cookies));
         console.log('[Sessão] Todos os cookies globais do Firefox foram salvos no Banco de Dados SQLite!');
-                
 
         sessoesAtivas.set(cpf, { browser, page });
         sessoesPendentes.delete(cpf);
@@ -236,14 +263,15 @@ async function confirmarToken2FA(cpf, token) {
     } catch (error) {
         if (browser && page && !page.isClosed()) await browser.close().catch(() => {});
         sessoesPendentes.delete(cpf);
-        throw new Error('Erro ao validar o token 2FA: ' + error.message);
+        const msgFinal = error.message.includes('O código digitado') ? error.message : ('Erro ao validar o token 2FA: ' + error.message);
+        throw new Error(msgFinal);
     }
 }
 
 async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
     let sessaoAtiva = sessoesAtivas.get(cpf);
 
-    // --- TENTA RECUPERAR A SESSÃO DO BANCO SE NÃO ESTIVER NA RAM ---
+    // RESTAURAÇÃO DA SESSÃO
     if (!sessaoAtiva) {
         const cookiesData = await buscarSessaoDB(cpf);
 
@@ -262,12 +290,10 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
             await browserContext.setCookie(...cookies);
 
             const page = await browser.newPage();
-            
-            // ADICIONE ISTO AQUI TAMBÉM: Trata diálogos nativos na sessão restaurada
             page.on('dialog', async dialog => await dialog.dismiss());
 
             await page.goto('https://www.pcnet.mg.gov.br/APP/', { waitUntil: 'networkidle2' });
-            // Tenta fechar automaticamente caso apareça algum modal de erro na tela
+            
             await page.evaluate(() => {
                 const btnFecharAlerta = document.querySelector('.alertblock button, .msg_erro button, input[value="Fechar"], input[value="OK"]');
                 if (btnFecharAlerta) btnFecharAlerta.click();
@@ -276,11 +302,10 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
             await desativarContadorSessao(page);
 
             const urlAtual = page.url();
-            // Verifica se o PCNet rejeitou o cookie (expirado no servidor)
             if (urlAtual.includes('loginVM.zul') || urlAtual.includes('seg.id')) {
-                console.log('[Sessão] Cookie expirado no servidor do PCNet. Limpando do banco.');
-                await browser.close().catch(() => {});
-                await apagarSessaoDB(cpf); // Apaga a sessão expirada do banco
+                console.log('[Sessão] Cookie expirado no servidor. Fechando navegador zumbi.');
+                await browser.close().catch(() => {}); // MATANDO O NAVEGADOR
+                await apagarSessaoDB(cpf);
                 throw new Error('A sessão salva expirou. Faça o login e o 2FA novamente.');
             }
 
@@ -307,8 +332,10 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
 
         const urlAtual = page.url();
         if (urlAtual.includes('loginVM.zul') || urlAtual.includes('seg.id')) {
+            console.log('[Sessão] Queda por inatividade detectada. Fechando navegador zumbi.');
+            await browser.close().catch(() => {}); // MATANDO O NAVEGADOR
             sessoesAtivas.delete(cpf);
-            await apagarSessaoDB(cpf); // Limpa do banco se for detectada queda natural
+            await apagarSessaoDB(cpf);
             throw new Error('A sessão expirou no servidor. Faça o login novamente.');
         }
 
@@ -689,11 +716,52 @@ async function movimentarFavsLote(cpf, codigoUnidade, listaFavs) {
     }
 }
 
+async function encerrarSessao(identificador) {
+    console.log(`[Logout] Solicitação de encerramento recebida para:`, identificador);
+
+    // 1. Fecha TODAS as instâncias ativas (Limpeza Total e Agressiva)
+    for (const [key, sessao] of sessoesAtivas.entries()) {
+        console.log(`[Logout] Fechando navegador ativo da chave: ${key}`);
+        if (sessao && sessao.browser) {
+            try {
+                await sessao.browser.close();
+            } catch (err) {
+                console.error('Erro ao fechar browser ativo:', err.message);
+            }
+        }
+    }
+    sessoesAtivas.clear(); 
+
+    // 2. Fecha TODAS as instâncias pendentes 
+    for (const [key, sessao] of sessoesPendentes.entries()) {
+        console.log(`[Logout] Fechando navegador pendente da chave: ${key}`);
+        if (sessao && sessao.browser) {
+            try {
+                await sessao.browser.close();
+            } catch (err) {
+                console.error('Erro ao fechar browser pendente:', err.message);
+            }
+        }
+    }
+    sessoesPendentes.clear(); 
+
+    // 3. Remove os cookies salvos no SQLite usando a função correta
+    if (identificador) {
+        try {
+            await apagarSessaoDB(identificador);
+            console.log(`[Logout] Registros de sessão do banco limpos para: ${identificador}`);
+        } catch (e) {
+            console.error('Erro ao limpar sessão do banco SQLite:', e.message);
+        }
+    }
+}
+
 module.exports = {
     iniciarLoginPCNet,
     confirmarToken2FA,
     acessarAceiteRequisicoes,
     obterCsvRequisicoes,
     movimentarFav,
-    movimentarFavsLote
+    movimentarFavsLote,
+    encerrarSessao
 };

@@ -17,18 +17,55 @@ export default function App() {
     useEffect(() => {
         const usuarioSalvo = localStorage.getItem('usuario');
         if (usuarioSalvo) {
-            setUsuario(JSON.parse(usuarioSalvo));
+            try {
+                setUsuario(JSON.parse(usuarioSalvo));
+            } catch (e) {
+                localStorage.removeItem('usuario');
+            }
         }
     }, []);
 
-    const handleLogout = () => {
-        localStorage.removeItem('token');
-        localStorage.removeItem('usuario');
-        setUsuario(null);
+    const handleLogout = async () => {
+        try {
+            // Pega os dados do usuário para identificar qual sessão matar no backend
+            const usuarioSalvo = localStorage.getItem('usuario');
+            if (usuarioSalvo) {
+                const dados = JSON.parse(usuarioSalvo);
+                const identificador = dados.email || dados.cpf;
+                
+                if (identificador) {
+                    // Chama a rota de logout no backend para fechar o Puppeteer e limpar o SQLite
+                    await api.post('/pcnet/logout', { cpf: identificador });
+                }
+            }
+        } catch (err) {
+            console.error('Erro ao comunicar o logout ao backend:', err);
+        } finally {
+            // Limpa o front-end independentemente de o backend responder com sucesso ou erro
+            localStorage.removeItem('token');
+            localStorage.removeItem('usuario');
+            setUsuario(null);
+        }
+    };
+
+    // --- INTERCEPTOR DE QUEDAS DE SESSÃO DO PCNET ---
+    const handleApiError = (error) => {
+        const mensagemErro = error.response?.data?.erro || error.message || '';
+        
+        if (
+            mensagemErro.includes('expirou') || 
+            mensagemErro.includes('Nenhuma sessão') || 
+            mensagemErro.includes('loginVM.zul')
+        ) {
+            alert('A sessão do PCNet expirou. Por favor, faça o login novamente.');
+            handleLogout();
+            return true; // Indica que o erro foi tratado como queda de sessão
+        }
+        return false;
     };
 
     const lidarComCliqueBalistica = () => {
-        setArquivoFoto(null); // Reseta a foto anterior ao abrir
+        setArquivoFoto(null); 
         setDadosPreenchidosIA(null);
         setModalFotoAberto(true);
     };
@@ -45,7 +82,7 @@ export default function App() {
     // Modo Manual COM a foto que já foi colocada no modal
     const prosseguirManualComFoto = () => {
         setModalFotoAberto(false);
-        setDadosPreenchidosIA(null); // Sem dados da IA, preenchimento manual, mas COM a foto
+        setDadosPreenchidosIA(null); 
         setEspecieSelecionada('Eficiencia Armas de Fogo e/ou municoes');
         setAbaAtiva('gerador');
     };
@@ -60,24 +97,20 @@ export default function App() {
 
         try {
             setCarregandoIA(true);
-            //const response = await fetch('http://localhost:3000/api/analisar-foto', {
-            //    method: 'POST',
-            //    body: formData
-            //});
-            await api.post('analisar-foto', formData, { responseType: 'json' });
-            const resultado = await response.json();
+            const response = await api.post('analisar-foto', formData, { responseType: 'json' });
+            const resultado = response.data;
 
-            if (response.ok) {
-                setDadosPreenchidosIA(resultado.dadosForm);
-                setModalFotoAberto(false);
-                setEspecieSelecionada('Eficiencia Armas de Fogo e/ou municoes');
-                setAbaAtiva('gerador');
-            } else {
-                alert('Erro na análise da IA: ' + resultado.erro);
-            }
+            setDadosPreenchidosIA(resultado.dadosForm);
+            setModalFotoAberto(false);
+            setEspecieSelecionada('Eficiencia Armas de Fogo e/ou municoes');
+            setAbaAtiva('gerador');
+
         } catch (error) {
-            console.error(error);
-            alert('Falha ao comunicar com o servidor de IA.');
+            // Verifica se a queda foi por expiração de sessão do PCNet antes de dar o erro genérico
+            if (!handleApiError(error)) {
+                console.error(error);
+                alert('Falha ao comunicar com o servidor de IA.');
+            }
         } finally {
             setCarregandoIA(false);
         }
@@ -103,7 +136,7 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <p className="text-xs text-gray-500 hidden sm:block">Perito(a): <span className="font-medium text-gray-700">{usuario.email}</span></p>
+                    <p className="text-xs text-gray-500 hidden sm:block">Conta: <span className="font-medium text-gray-700">{usuario.email}</span></p>
                     <button 
                         onClick={handleLogout}
                         className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition font-medium cursor-pointer"
@@ -216,7 +249,6 @@ export default function App() {
                                 </span>
                             </label>
 
-                            {/* Renderização dinâmica dos botões dependendo se o usuário colocou a imagem ou não */}
                             {arquivoFoto ? (
                                 <div className="flex flex-col gap-3">
                                     <button 

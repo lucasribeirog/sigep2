@@ -23,7 +23,6 @@ async function extrairDadosArmaViaIA(caminhoImagem) {
     - "comprimento_cano": (Apenas o número em milímetros, ex: 75)`;
 
     try {
-        // Lê o arquivo do disco e converte para Base64 corretamente
         const imageBuffer = fs.readFileSync(caminhoImagem);
         const base64Image = imageBuffer.toString('base64');
 
@@ -51,7 +50,7 @@ async function extrairDadosArmaViaIA(caminhoImagem) {
 }
 
 
-function processarBalistica(dadosForm) {
+function processarBalistica(dadosForm, caminhoFoto = null) {
     let layout = {
         is_carabina: false,
         is_revolver: false,
@@ -67,8 +66,23 @@ function processarBalistica(dadosForm) {
         is_municao_eficiente: false,
         is_municao_ineficiente: false,
         is_encaminha_custodia: false,
-        is_municao_consumida: false
+        is_municao_consumida: false,
+        tem_imagem: false,
+        imagem_vestigio: ''
     };
+
+    // Tratamento dinâmico da imagem para o DocxTemplater
+    const fotoFinal = caminhoFoto || dadosForm.caminho_foto || dadosForm.foto || null;
+    const temImagemBoolean = Boolean(fotoFinal && String(fotoFinal).trim() !== '');
+    
+    layout.tem_imagem = temImagemBoolean;
+    if (temImagemBoolean) {
+        layout.imagem_vestigio = {
+            path: fotoFinal,
+            width: 250,
+            height: 180
+        };
+    }
 
     const tipo = dadosForm.tipo_material;
     if (tipo === 'carabina') layout.is_carabina = true;
@@ -82,15 +96,21 @@ function processarBalistica(dadosForm) {
         layout.is_pm = true;
     }
 
-    const res = dadosForm.resultado_exame;
-    if (res === 'eficiente') layout.is_eficiente = true;
-    else if (res === 'ineficiente') layout.is_ineficiente = true;
-    else if (res === 'nao_calcou') layout.is_nao_calcou = true;
-    else if (res === 'rajada') layout.is_rajada = true;
-    else if (res === 'municao_eficiente') layout.is_municao_eficiente = true;
-    else if (res === 'municao_ineficiente') layout.is_municao_ineficiente = true;
+    const res = String(dadosForm.resultado_exame || '').toLowerCase().trim();
+    
+    // Roteamento inteligente de eficiência (Munição vs Arma)
+    if (layout.is_municao_isolada) {
+        if (res.includes('ineficiente')) layout.is_municao_ineficiente = true;
+        else if (res.includes('eficiente')) layout.is_municao_eficiente = true;
+    } else {
+        if (res === 'eficiente') layout.is_eficiente = true;
+        else if (res === 'ineficiente') layout.is_ineficiente = true;
+        else if (res === 'nao_calcou') layout.is_nao_calcou = true;
+        else if (res === 'rajada') layout.is_rajada = true;
+    }
 
-    if (dadosForm.destino === 'consumida') {
+    const destino = String(dadosForm.destino || '').toLowerCase();
+    if (destino.includes('consumid') || dadosForm.municao_consumida === true || dadosForm.is_municao_consumida === true) {
         layout.is_municao_consumida = true;
     } else {
         layout.is_encaminha_custodia = true;
@@ -126,13 +146,15 @@ function processarBalistica(dadosForm) {
         municoesDetalhes = `${fallbackQtd} ${termoFallback}, calibre ${fallbackCal}, marca ${fallbackMarc}`;
     }
     
-    // Tratamento seguro para a capacidade (evita "undefined" se o campo estiver vazio)
     const capVal = dadosForm.capacidade;
     let capacidadeFormatada = 'não informada';
     if (capVal !== undefined && capVal !== null && String(capVal).trim() !== '') {
         const capNum = parseInt(capVal, 10);
         capacidadeFormatada = (capNum === 1) ? '1 (um) tiro' : `${capVal} tiros`;
     }
+
+    const lacreExtraido = dadosForm.n_lacre || dadosForm.lacre || dadosForm.novoLacre || dadosForm.numero_lacre;
+    const lacreFinal = (lacreExtraido && String(lacreExtraido).trim() !== '') ? lacreExtraido : '________';
 
     return {
         ...layout,
@@ -145,7 +167,7 @@ function processarBalistica(dadosForm) {
         comprimento_total: dadosForm.comprimento_total || '',
         capacidade: dadosForm.capacidade || '',
         capacidade_texto: capacidadeFormatada,
-        n_lacre: dadosForm.n_lacre || '',
+        n_lacre: lacreFinal,
         defeito_constatado: dadosForm.defeito_constatado || '',
         tipo_acao_carabina: dadosForm.tipo_acao_carabina || '',
         detalhes_coronha: dadosForm.detalhes_coronha || '',
