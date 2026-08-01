@@ -9,7 +9,7 @@ const swaggerDocument = {
   },
   servers: [
     {
-      url: 'http://localhost:3000/api', // Ajuste a porta se o seu server.js usar outra
+      url: 'http://localhost:3000/api',
       description: 'Servidor Local',
     },
   ],
@@ -102,8 +102,8 @@ const swaggerDocument = {
               schema: {
                 type: 'object',
                 properties: {
-                  natureza: { type: 'string', example: 'Patrimônio' },
-                  especie: { type: 'string', example: 'Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem' },
+                  natureza: { type: 'string', example: 'Química Forense' },
+                  especie: { type: 'string', example: 'Laudo Preliminar de Constatação de Drogas' },
                 },
               },
             },
@@ -125,7 +125,7 @@ const swaggerDocument = {
               schema: {
                 type: 'object',
                 properties: {
-                  especie: { type: 'string', example: 'Eficiencia Armas de Fogo e/ou municoes' },
+                  especie: { type: 'string', example: 'Laudo Preliminar de Constatação de Drogas' },
                   arquivo: { type: 'string', format: 'binary' },
                 },
               },
@@ -140,8 +140,8 @@ const swaggerDocument = {
     '/analisar-foto': {
       post: {
         tags: ['Laudos (Geração)'],
-        summary: 'Analisar foto do vestígio com régua de escala',
-        description: 'Recebe a imagem da arma/objeto ao lado da régua de escala pericial, extrai os parâmetros visuais/dimensões e retorna o JSON estruturado para pré-preencher o formulário.',
+        summary: 'Analisar foto do vestígio com IA',
+        description: 'Recebe a imagem do vestígio (arma ou drogas), extrai os parâmetros técnicos por IA e retorna o JSON estruturado para pré-preencher o formulário.',
         requestBody: {
           required: true,
           content: {
@@ -152,12 +152,12 @@ const swaggerDocument = {
                   foto_objeto: {
                     type: 'string',
                     format: 'binary',
-                    description: 'Imagem do vestígio fotografado com a régua de escala pericial.',
+                    description: 'Imagem do vestígio fotografado.',
                   },
                   especie: {
                     type: 'string',
-                    description: '(Opcional) Espécie do objeto para direcionar a análise.',
-                    example: 'arma de fogo',
+                    description: 'Espécie do objeto para direcionar a análise (ex: "Eficiencia Armas de Fogo e/ou municoes" ou "Laudo Preliminar de Constatação de Drogas").',
+                    example: 'Laudo Preliminar de Constatação de Drogas',
                   },
                 },
                 required: ['foto_objeto'],
@@ -173,15 +173,15 @@ const swaggerDocument = {
                 schema: {
                   type: 'object',
                   properties: {
-                    mensagem: { type: 'string', example: 'Imagem analisada com sucesso via escala pericial!' },
+                    mensagem: { type: 'string', example: 'Imagem analisada com sucesso via IA e Visão Computacional!' },
                     dadosForm: {
                       type: 'object',
                       properties: {
-                        especie: { type: 'string', example: 'arma de fogo' },
-                        marca: { type: 'string', example: 'Taurus' },
-                        calibre: { type: 'string', example: '9mm' },
-                        acabamento: { type: 'string', example: 'Oxidado' },
-                        comprimento_total_mm: { type: 'string', example: '180mm' },
+                        droga: { type: 'string', example: 'cocaina' },
+                        cor_material: { type: 'string', example: 'branca' },
+                        qtd_involucros: { type: 'integer', example: 1 },
+                        massa_liquida: { type: 'string', example: '5,2' },
+                        resultado: { type: 'string', example: 'positivo' },
                       },
                     },
                     imagemProcessadaBase64: { type: 'string', example: 'data:image/jpeg;base64,...' },
@@ -199,7 +199,7 @@ const swaggerDocument = {
       post: {
         tags: ['Laudos (Geração)'],
         summary: 'Processar e gerar laudo preenchido',
-        description: 'Recebe um arquivo `.docx` base do PCNet, identifica a espécie, injeta as variáveis através de cirurgia XML e retorna o documento finalizado.',
+        description: 'Recebe o arquivo `.docx` original do PCNet, identifica a espécie, injeta as variáveis condicionais e retorna o documento finalizado.',
         requestBody: {
           required: true,
           content: {
@@ -209,17 +209,17 @@ const swaggerDocument = {
                 properties: {
                   especie: { 
                     type: 'string', 
-                    description: 'Nome exato da espécie pericial (deve bater com o banco de dados).',
-                    example: 'Eficiencia Armas de Fogo e/ou municoes' 
+                    description: 'Nome exato da espécie pericial.',
+                    example: 'Laudo Preliminar de Constatação de Drogas' 
                   },
                   dadosForm: { 
                     type: 'string', 
-                    description: 'Objeto JSON **transformado em string** (stringified) contendo as respostas do formulário.\n\n**Exemplo (Balística):**\n```json\n{\n  "tipo_material": "revolver",\n  "calibre": ".38 SPL",\n  "marca": "Taurus",\n  "resultado_exame": "eficiente",\n  "pertence_pm": true\n}\n```',
-                    example: '{"tipo_material": "revolver", "calibre": ".38 SPL", "marca": "Taurus", "resultado_exame": "eficiente"}'
+                    description: 'Objeto JSON transformado em string com as respostas do formulário de drogas ou balística.\n\n**Exemplo (Drogas):**\n```json\n{\n  "droga": "cocaina",\n  "cor_material": "branca",\n  "qtd_involucros": 2,\n  "massa_liquida": "10,5",\n  "extenso_massa": "dez gramas e cinco decigramas",\n  "numero_envelope": "123456",\n  "resultado": "positivo",\n  "tipo_encaminhamento": "fragmentado",\n  "massa_amostra": "2,0",\n  "fav_amostra": "998877/2026",\n  "envelope_amostra": "654321",\n  "envelope_restante": "111222"\n}\n```',
+                    example: '{"droga": "cocaina", "cor_material": "branca", "qtd_involucros": 1, "massa_liquida": "5,2", "resultado": "positivo"}' 
                   },
                   perito: {
                     type: 'string',
-                    description: '(Opcional) Objeto JSON **transformado em string** com os dados do perito para o cabeçalho/assinatura.',
+                    description: '(Opcional) Objeto JSON em string com os dados do perito.',
                     example: '{"nome": "João Silva", "masp": "112233-4", "unidade": "Posto de Perícia"}'
                   },
                   arquivo_pcnet: { 
@@ -235,12 +235,12 @@ const swaggerDocument = {
         },
         responses: {
           200: {
-            description: 'Laudo gerado e unificado com sucesso. Inicia o download do `.docx`.',
+            description: 'Laudo gerado e unificado com sucesso.',
             content: { 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': { schema: { type: 'string', format: 'binary' } } },
           },
-          400: { description: 'Parâmetros obrigatórios ausentes (Espécie ou Arquivo).' },
-          404: { description: 'Template não encontrado para a espécie informada.' },
-          500: { description: 'Erro interno durante a cirurgia XML do documento.' },
+          400: { description: 'Parâmetros obrigatórios ausentes.' },
+          404: { description: 'Template não encontrado.' },
+          500: { description: 'Erro interno durante a cirurgia XML.' },
         },
       },
     },

@@ -118,7 +118,27 @@ function gerarLaudo(req, res) {
                 dadosSeguros = req.body;
             }
 
-            const variaveisTemplate = prepararVariaveis(especie, dadosSeguros, perito);
+            // 1. Pré-extrai a FAV do documento PCNet antes de preparar as variáveis
+            let numeroFavDetectada = null;
+            try {
+                const zipPCNetPre = new PizZip(arquivoPCNetBlob);
+                const xmlPCNetPre = zipPCNetPre.file('word/document.xml').asText();
+                const docPCNetPre = new DOMParser().parseFromString(xmlPCNetPre, 'text/xml');
+                const textElementsPre = docPCNetPre.getElementsByTagName('w:t');
+                let textoCompletoPre = '';
+                for (let k = 0; k < textElementsPre.length; k++) {
+                    textoCompletoPre += (textElementsPre[k].textContent || '') + ' ';
+                }
+                const matchFavPre = textoCompletoPre.match(/(?:Nº\s*da\s*FAV|FAV|Ficha de Acompanhamento de Vest[ií]gio)[:\s\.\-]*([0-9]+(?:\/[0-9]+)?)/i) ||
+                                    textoCompletoPre.match(/FAV[:\s]*([0-9]+)/i) ||
+                                    textoCompletoPre.match(/([0-9]{4,6}\/[0-9]{4})/);
+                numeroFavDetectada = matchFavPre ? matchFavPre[1] : null;
+            } catch (e) {
+                console.error("Aviso: Não foi possível pré-extrair a FAV", e);
+            }
+
+            // 2. Passa a FAV detectada para a função prepararVariaveis
+            const variaveisTemplate = prepararVariaveis(especie, dadosSeguros, perito, numeroFavDetectada);
 
             if (fotoBuffer) {
                 const tempDir = path.resolve(__dirname, '../../temp');
@@ -146,7 +166,7 @@ function gerarLaudo(req, res) {
                         }
                         const larguraOriginal = dimensions.width;
                         const alturaOriginal = dimensions.height;
-                        const alturaDesejada = 378; // 10 cm exatos
+                        const alturaDesejada = 378; 
                         const larguraProporcional = Math.round((larguraOriginal * alturaDesejada) / alturaOriginal);
                         
                         return [larguraProporcional, alturaDesejada]; 
@@ -171,24 +191,6 @@ function gerarLaudo(req, res) {
 
             const docPCNet = new DOMParser().parseFromString(xmlPCNetOriginal, 'text/xml');
             const docTemp = new DOMParser().parseFromString(xmlTemplatePreenchido, 'text/xml');
-
-            // 🔍 EXTRAÇÃO ROBUSTA COLETANDO AS TAGS <w:t> DO WORD
-            const textElements = docPCNet.getElementsByTagName('w:t');
-            let textoCompletoPCNet = '';
-            for (let k = 0; k < textElements.length; k++) {
-                textoCompletoPCNet += (textElements[k].textContent || '') + ' ';
-            }
-
-            console.log("--- INÍCIO DO TEXTO LIDO DO PCNET ---");
-            console.log(textoCompletoPCNet.substring(0, 500)); // Agora vai aparecer o texto real aqui!
-            console.log("---------------------------------------");
-
-            const matchFav = textoCompletoPCNet.match(/(?:Nº\s*da\s*FAV|FAV|Ficha de Acompanhamento de Vest[ií]gio)[:\s\.\-]*([0-9]+(?:\/[0-9]+)?)/i) ||
-                             textoCompletoPCNet.match(/FAV[:\s]*([0-9]+)/i) ||
-                             textoCompletoPCNet.match(/([0-9]{4,6}\/[0-9]{4})/);
-                             
-            const numeroFavDetectada = matchFav ? matchFav[1] : null;
-            console.log("🎯 FAV Detectada pelo Regex do Backend:", numeroFavDetectada);
 
             const bodyPCNet = docPCNet.getElementsByTagName('w:body')[0];
             const bodyTemp = docTemp.getElementsByTagName('w:body')[0];
@@ -309,7 +311,6 @@ function gerarLaudo(req, res) {
             const buf = zipPCNet.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
             const nomeOriginal = req.files && req.files['arquivo_pcnet'] ? req.files['arquivo_pcnet'][0].originalname : (req.file ? req.file.originalname : `laudo_${especie}.docx`);
 
-            // 🎯 ENVIO SEGURO DO HEADER DA FAV (.docx)
             if (numeroFavDetectada) {
                 res.setHeader('x-fav-detectada', String(numeroFavDetectada));
             }
@@ -360,7 +361,24 @@ const gerarLaudoPdf = async (req, res) => {
                 dadosSeguros = req.body;
             }
 
-            const variaveisTemplate = prepararVariaveis(especie, dadosSeguros, perito);
+            let numeroFavDetectada = null;
+            try {
+                const zipPCNetPre = new PizZip(arquivoPCNetBlob);
+                const xmlPCNetPre = zipPCNetPre.file('word/document.xml').asText();
+                const docPCNetPre = new DOMParser().parseFromString(xmlPCNetPre, 'text/xml');
+                const textElementsPre = docPCNetPre.getElementsByTagName('w:t');
+                let textoCompletoPre = '';
+                for (let k = 0; k < textElementsPre.length; k++) {
+                    textoCompletoPre += (textElementsPre[k].textContent || '') + ' ';
+                }
+                const matchFavPre = textoCompletoPre.match(/(?:Nº\s*da\s*FAV|FAV|Ficha de Acompanhamento de Vest[ií]gio)[:\s\.\-]*([0-9]+(?:\/[0-9]+)?)/i) ||
+                                    textoCompletoPre.match(/FAV[:\s]*([0-9]+)/i);
+                numeroFavDetectada = matchFavPre ? matchFavPre[1] : null;
+            } catch (e) {
+                console.error("Aviso: Não foi possível pré-extrair a FAV (PDF)", e);
+            }
+
+            const variaveisTemplate = prepararVariaveis(especie, dadosSeguros, perito, numeroFavDetectada);
 
             if (fotoBuffer) {
                 const tempDir = path.resolve(__dirname, '../../temp');
@@ -388,7 +406,7 @@ const gerarLaudoPdf = async (req, res) => {
                         }
                         const larguraOriginal = dimensions.width;
                         const alturaOriginal = dimensions.height;
-                        const alturaDesejada = 378; // 10 cm exatos
+                        const alturaDesejada = 378; 
                         const larguraProporcional = Math.round((larguraOriginal * alturaDesejada) / alturaOriginal);
                         
                         return [larguraProporcional, alturaDesejada]; 
@@ -412,19 +430,6 @@ const gerarLaudoPdf = async (req, res) => {
 
             const docPCNet = new DOMParser().parseFromString(xmlPCNetOriginal, 'text/xml');
             const docTemp = new DOMParser().parseFromString(xmlTemplatePreenchido, 'text/xml');
-
-            // 🔍 EXTRAÇÃO ROBUSTA DA FAV COM DIAGNÓSTICO NO TERMINAL (PDF)
-            const textoCompletoPCNet = docPCNet.textContent || '';
-            
-            console.log("--- INÍCIO DO TEXTO LIDO DO PCNET (PDF) ---");
-            console.log(textoCompletoPCNet.substring(0, 500));
-            console.log("-------------------------------------------");
-
-            const matchFav = textoCompletoPCNet.match(/(?:Nº\s*da\s*FAV|FAV|Ficha de Acompanhamento de Vest[ií]gio)[:\s\.\-]*([0-9]+(?:\/[0-9]+)?)/i) ||
-                             textoCompletoPCNet.match(/FAV[:\s]*([0-9]+)/i);
-
-            const numeroFavDetectada = matchFav ? matchFav[1] : null;
-            console.log("🎯 FAV Detectada pelo Regex do Backend (PDF):", numeroFavDetectada);
 
             const bodyPCNet = docPCNet.getElementsByTagName('w:body')[0];
             const bodyTemp = docTemp.getElementsByTagName('w:body')[0];
@@ -581,7 +586,6 @@ const gerarLaudoPdf = async (req, res) => {
             execSync(`${executavelLo} --headless --convert-to pdf --outdir "${tempDir}" "${docxPath}"`);
 
             if (fs.existsSync(pdfPath)) {
-                // 🎯 ENVIO SEGURO DO HEADER DA FAV (PDF)
                 if (numeroFavDetectada) {
                     res.setHeader('x-fav-detectada', String(numeroFavDetectada));
                 }
