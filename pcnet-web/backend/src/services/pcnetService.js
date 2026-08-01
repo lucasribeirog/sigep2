@@ -103,7 +103,7 @@ async function desativarContadorSessao(page) {
 async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
     const browser = await puppeteer.launch({
         browser: 'firefox',
-        headless: false, 
+        headless: true, 
         defaultViewport: null,
         args: [
             '--start-maximized',
@@ -271,7 +271,14 @@ async function confirmarToken2FA(cpf, token) {
 async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
     let sessaoAtiva = sessoesAtivas.get(cpf);
 
-    // RESTAURAÇÃO DA SESSÃO
+    // SE A JANELA ANTERIOR FECHOU, LIMPA DA MEMÓRIA PARA RECUPERAR VIA BANCO AUTOMATICAMENTE
+    if (sessaoAtiva && sessaoAtiva.page && sessaoAtiva.page.isClosed()) {
+        console.log('[Sessão] A aba anterior estava fechada. Recuperando sessão via SQLite...');
+        sessoesAtivas.delete(cpf);
+        sessaoAtiva = null;
+    }
+
+    // RESTAURAÇÃO DA SESSÃO VIA SQLITE (CASO NECESSÁRIO)
     if (!sessaoAtiva) {
         const cookiesData = await buscarSessaoDB(cpf);
 
@@ -280,7 +287,7 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
             
             const browser = await puppeteer.launch({
                 browser: 'firefox',
-                headless: false, 
+                headless: true, 
                 defaultViewport: null,
                 args: ['--start-maximized']
             });
@@ -304,27 +311,22 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
             const urlAtual = page.url();
             if (urlAtual.includes('loginVM.zul') || urlAtual.includes('seg.id')) {
                 console.log('[Sessão] Cookie expirado no servidor. Fechando navegador zumbi.');
-                await browser.close().catch(() => {}); // MATANDO O NAVEGADOR
+                await browser.close().catch(() => {}); 
                 await apagarSessaoDB(cpf);
-                throw new Error('A sessão salva expirou. Faça o login e o 2FA novamente.');
+                throw new Error('A sessão salva expirou no servidor. Por favor, vá na aba "Integração PCNet" e faça o login novamente.');
             }
 
             sessoesAtivas.set(cpf, { browser, page });
             sessaoAtiva = sessoesAtivas.get(cpf);
-            console.log('[Sessão] Sessão restaurada com sucesso!');
+            console.log('[Sessão] Sessão restaurada com sucesso em segundo plano!');
         } else {
-            throw new Error('Nenhuma sessão ativa encontrada. Faça o login e o 2FA primeiro.');
+            throw new Error('Nenhuma sessão ativa encontrada. Por favor, conecte o robô na aba "Integração PCNet".');
         }
     }
 
     const { page, browser } = sessaoAtiva;
 
     try {
-        if (page.isClosed()) {
-            sessoesAtivas.delete(cpf);
-            throw new Error('A janela do navegador foi fechada pelo usuário. Faça o login novamente.');
-        }
-
         console.log('Navegando para a página principal do PCNet...');
         await page.goto('https://www.pcnet.mg.gov.br/APP/', { waitUntil: 'networkidle2' });
         
@@ -333,10 +335,10 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
         const urlAtual = page.url();
         if (urlAtual.includes('loginVM.zul') || urlAtual.includes('seg.id')) {
             console.log('[Sessão] Queda por inatividade detectada. Fechando navegador zumbi.');
-            await browser.close().catch(() => {}); // MATANDO O NAVEGADOR
+            await browser.close().catch(() => {}); 
             sessoesAtivas.delete(cpf);
             await apagarSessaoDB(cpf);
-            throw new Error('A sessão expirou no servidor. Faça o login novamente.');
+            throw new Error('A sessão expirou no servidor. Por favor, faça o login novamente.');
         }
 
         const temSeletorUnidade = await page.$('select#unidadeSelecionada');

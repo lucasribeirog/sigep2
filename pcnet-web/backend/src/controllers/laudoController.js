@@ -172,6 +172,24 @@ function gerarLaudo(req, res) {
             const docPCNet = new DOMParser().parseFromString(xmlPCNetOriginal, 'text/xml');
             const docTemp = new DOMParser().parseFromString(xmlTemplatePreenchido, 'text/xml');
 
+            // 🔍 EXTRAÇÃO ROBUSTA COLETANDO AS TAGS <w:t> DO WORD
+            const textElements = docPCNet.getElementsByTagName('w:t');
+            let textoCompletoPCNet = '';
+            for (let k = 0; k < textElements.length; k++) {
+                textoCompletoPCNet += (textElements[k].textContent || '') + ' ';
+            }
+
+            console.log("--- INÍCIO DO TEXTO LIDO DO PCNET ---");
+            console.log(textoCompletoPCNet.substring(0, 500)); // Agora vai aparecer o texto real aqui!
+            console.log("---------------------------------------");
+
+            const matchFav = textoCompletoPCNet.match(/(?:Nº\s*da\s*FAV|FAV|Ficha de Acompanhamento de Vest[ií]gio)[:\s\.\-]*([0-9]+(?:\/[0-9]+)?)/i) ||
+                             textoCompletoPCNet.match(/FAV[:\s]*([0-9]+)/i) ||
+                             textoCompletoPCNet.match(/([0-9]{4,6}\/[0-9]{4})/);
+                             
+            const numeroFavDetectada = matchFav ? matchFav[1] : null;
+            console.log("🎯 FAV Detectada pelo Regex do Backend:", numeroFavDetectada);
+
             const bodyPCNet = docPCNet.getElementsByTagName('w:body')[0];
             const bodyTemp = docTemp.getElementsByTagName('w:body')[0];
 
@@ -281,7 +299,6 @@ function gerarLaudo(req, res) {
             if (Object.keys(idMapping).length > 0) {
                 Object.keys(idMapping).forEach(oldId => {
                     const newId = idMapping[oldId];
-                    // Correção essencial: substitui r:embed além de r:id para atualizar o vínculo da imagem corretamente
                     xmlFinalUnificado = xmlFinalUnificado.replace(new RegExp(`r:embed="${oldId}"`, 'g'), `r:embed="${newId}"`);
                     xmlFinalUnificado = xmlFinalUnificado.replace(new RegExp(`r:id="${oldId}"`, 'g'), `r:id="${newId}"`);
                 });
@@ -292,7 +309,12 @@ function gerarLaudo(req, res) {
             const buf = zipPCNet.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
             const nomeOriginal = req.files && req.files['arquivo_pcnet'] ? req.files['arquivo_pcnet'][0].originalname : (req.file ? req.file.originalname : `laudo_${especie}.docx`);
 
-            res.setHeader('Content-Disposition', `attachment; filename=${nomeOriginal}`);
+            // 🎯 ENVIO SEGURO DO HEADER DA FAV (.docx)
+            if (numeroFavDetectada) {
+                res.setHeader('x-fav-detectada', String(numeroFavDetectada));
+            }
+            res.setHeader('Access-Control-Expose-Headers', 'x-fav-detectada');
+            res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(nomeOriginal)}`);
             res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
             res.send(buf);
 
@@ -390,6 +412,19 @@ const gerarLaudoPdf = async (req, res) => {
 
             const docPCNet = new DOMParser().parseFromString(xmlPCNetOriginal, 'text/xml');
             const docTemp = new DOMParser().parseFromString(xmlTemplatePreenchido, 'text/xml');
+
+            // 🔍 EXTRAÇÃO ROBUSTA DA FAV COM DIAGNÓSTICO NO TERMINAL (PDF)
+            const textoCompletoPCNet = docPCNet.textContent || '';
+            
+            console.log("--- INÍCIO DO TEXTO LIDO DO PCNET (PDF) ---");
+            console.log(textoCompletoPCNet.substring(0, 500));
+            console.log("-------------------------------------------");
+
+            const matchFav = textoCompletoPCNet.match(/(?:Nº\s*da\s*FAV|FAV|Ficha de Acompanhamento de Vest[ií]gio)[:\s\.\-]*([0-9]+(?:\/[0-9]+)?)/i) ||
+                             textoCompletoPCNet.match(/FAV[:\s]*([0-9]+)/i);
+
+            const numeroFavDetectada = matchFav ? matchFav[1] : null;
+            console.log("🎯 FAV Detectada pelo Regex do Backend (PDF):", numeroFavDetectada);
 
             const bodyPCNet = docPCNet.getElementsByTagName('w:body')[0];
             const bodyTemp = docTemp.getElementsByTagName('w:body')[0];
@@ -546,7 +581,15 @@ const gerarLaudoPdf = async (req, res) => {
             execSync(`${executavelLo} --headless --convert-to pdf --outdir "${tempDir}" "${docxPath}"`);
 
             if (fs.existsSync(pdfPath)) {
-                res.download(pdfPath, `Laudo_Oficial_${arquivoId}.pdf`, (err) => {
+                // 🎯 ENVIO SEGURO DO HEADER DA FAV (PDF)
+                if (numeroFavDetectada) {
+                    res.setHeader('x-fav-detectada', String(numeroFavDetectada));
+                }
+                res.setHeader('Access-Control-Expose-Headers', 'x-fav-detectada');
+                res.setHeader('Content-Disposition', `attachment; filename=Laudo_Oficial_${arquivoId}.pdf`);
+                res.setHeader('Content-Type', 'application/pdf');
+
+                res.sendFile(pdfPath, (err) => {
                     setTimeout(() => {
                         if (fs.existsSync(docxPath)) fs.unlinkSync(docxPath);
                         if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);

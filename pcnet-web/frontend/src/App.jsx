@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import GeradorLaudo from './components/GeradorLaudo';
+import PcnetConfig from './components/PcnetConfig'; // NOVO COMPONENTE IMPORTADO
 import api from '../src/api/pcnet';
 
 export default function App() {
@@ -27,39 +28,30 @@ export default function App() {
 
     const handleLogout = async () => {
         try {
-            // Pega os dados do usuário para identificar qual sessão matar no backend
-            const usuarioSalvo = localStorage.getItem('usuario');
-            if (usuarioSalvo) {
-                const dados = JSON.parse(usuarioSalvo);
-                const identificador = dados.email || dados.cpf;
-                
-                if (identificador) {
-                    // Chama a rota de logout no backend para fechar o Puppeteer e limpar o SQLite
-                    await api.post('/pcnet/logout', { cpf: identificador });
-                }
+            // Se o perito estava com o robô ligado, desliga no backend por segurança
+            const cpfPerito = localStorage.getItem('cpf_perito');
+            if (cpfPerito) {
+                await api.post('/pcnet/logout', { cpf: cpfPerito });
             }
         } catch (err) {
             console.error('Erro ao comunicar o logout ao backend:', err);
         } finally {
-            // Limpa o front-end independentemente de o backend responder com sucesso ou erro
+            // Limpa tudo
             localStorage.removeItem('token');
             localStorage.removeItem('usuario');
+            localStorage.removeItem('cpf_perito');
             setUsuario(null);
         }
     };
 
-    // --- INTERCEPTOR DE QUEDAS DE SESSÃO DO PCNET ---
     const handleApiError = (error) => {
         const mensagemErro = error.response?.data?.erro || error.message || '';
         
-        if (
-            mensagemErro.includes('expirou') || 
-            mensagemErro.includes('Nenhuma sessão') || 
-            mensagemErro.includes('loginVM.zul')
-        ) {
-            alert('A sessão do PCNet expirou. Por favor, faça o login novamente.');
-            handleLogout();
-            return true; // Indica que o erro foi tratado como queda de sessão
+        if (mensagemErro.includes('expirou') || mensagemErro.includes('Nenhuma sessão') || mensagemErro.includes('loginVM.zul')) {
+            alert('A sessão do robô no PCNet expirou. Por favor, vá até a aba "Integrações" e conecte novamente.');
+            // NÃO remove o usuário do Nexus, apenas manda ele reconectar o robô
+            setAbaAtiva('config');
+            return true; 
         }
         return false;
     };
@@ -70,7 +62,6 @@ export default function App() {
         setModalFotoAberto(true);
     };
 
-    // Modo Manual SEM foto
     const prosseguirSemFoto = () => {
         setModalFotoAberto(false);
         setArquivoFoto(null);
@@ -79,7 +70,6 @@ export default function App() {
         setAbaAtiva('gerador');
     };
 
-    // Modo Manual COM a foto que já foi colocada no modal
     const prosseguirManualComFoto = () => {
         setModalFotoAberto(false);
         setDadosPreenchidosIA(null); 
@@ -87,10 +77,8 @@ export default function App() {
         setAbaAtiva('gerador');
     };
 
-    // Modo com IA COM a foto do modal
     const enviarFotoParaIA = async () => {
         if (!arquivoFoto) return;
-
         const formData = new FormData();
         formData.append('foto_objeto', arquivoFoto);
         formData.append('especie', 'Eficiencia Armas de Fogo e/ou municoes');
@@ -98,17 +86,12 @@ export default function App() {
         try {
             setCarregandoIA(true);
             const response = await api.post('analisar-foto', formData, { responseType: 'json' });
-            const resultado = response.data;
-
-            setDadosPreenchidosIA(resultado.dadosForm);
+            setDadosPreenchidosIA(response.data.dadosForm);
             setModalFotoAberto(false);
             setEspecieSelecionada('Eficiencia Armas de Fogo e/ou municoes');
             setAbaAtiva('gerador');
-
         } catch (error) {
-            // Verifica se a queda foi por expiração de sessão do PCNet antes de dar o erro genérico
             if (!handleApiError(error)) {
-                console.error(error);
                 alert('Falha ao comunicar com o servidor de IA.');
             }
         } finally {
@@ -136,7 +119,9 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <p className="text-xs text-gray-500 hidden sm:block">Conta: <span className="font-medium text-gray-700">{usuario.email}</span></p>
+                    <p className="text-xs text-gray-500 hidden sm:block">
+                        Conta: <span className="font-medium text-gray-700">{usuario.email}</span>
+                    </p>
                     <button 
                         onClick={handleLogout}
                         className="text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg transition font-medium cursor-pointer"
@@ -153,7 +138,7 @@ export default function App() {
                         abaAtiva === 'inicio' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
                     }`}
                 >
-                    🏠 Início / Boas-Vindas
+                    🏠 Início
                 </button>
                 <button
                     onClick={() => setAbaAtiva('gerador')}
@@ -163,14 +148,22 @@ export default function App() {
                 >
                     📄 Elaboração de Laudos
                 </button>
+                <button
+                    onClick={() => setAbaAtiva('config')}
+                    className={`py-3 text-sm font-semibold border-b-2 transition cursor-pointer ${
+                        abaAtiva === 'config' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                    }`}
+                >
+                    ⚙️ Integração PCNet
+                </button>
             </nav>
 
             <main className="flex-1 p-8 max-w-6xl mx-auto w-full relative">
-                {abaAtiva === 'inicio' ? (
+                {abaAtiva === 'inicio' && (
                     <div className="space-y-6">
                         <div className="bg-[#0284C7] text-white p-8 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-center">
                             <div className="space-y-2">
-                                <h2 className="text-3xl font-bold">Bem-vindo(a) ao Painel Pericial</h2>
+                                <h2 className="text-3xl font-bold">Bem-vindo(a), {usuario.nome?.split(' ')[0] || 'Perito(a)'}!</h2>
                                 <p className="text-sky-100 text-sm max-w-xl">
                                     Plataforma automatizada para suporte à elaboração, padronização e emissão de laudos periciais de balística e patrimônio.
                                 </p>
@@ -217,12 +210,18 @@ export default function App() {
                             </div>
                         </div>
                     </div>
-                ) : (
+                )}
+
+                {abaAtiva === 'gerador' && (
                     <GeradorLaudo 
                         especieInicial={especieSelecionada} 
                         dadosIniciaisIA={dadosPreenchidosIA} 
                         fotoObjetoInicial={arquivoFoto}
                     />
+                )}
+
+                {abaAtiva === 'config' && (
+                    <PcnetConfig />
                 )}
 
                 {/* MODAL MODERNO DE UPLOAD DE FOTO */}

@@ -6,8 +6,14 @@ import FormPatrimonio from './forms/FormPatrimonio';
 export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = null, fotoObjetoInicial = null }) {
     const [especie, setEspecie] = useState(especieInicial);
     const [arquivoPcnet, setArquivoPcnet] = useState(null);
-    const [fotoObjeto] = useState(fotoObjetoInicial); // Mantém a foto que veio do modal (se houver)
+    const [fotoObjeto] = useState(fotoObjetoInicial); 
     const [loading, setLoading] = useState(false);
+
+    // 🎯 1. NOVOS ESTADOS PARA O MODAL DA FAV DETECTADA
+    const [mostrarModalFav, setMostrarModalFav] = useState(false);
+    const [numeroFav, setNumeroFav] = useState('');
+    const [novoLacreFav, setNovoLacreFav] = useState('');
+    const [carregandoFav, setCarregandoFav] = useState(false);
 
     const [form, setForm] = useState({
         tipo_material: dadosIniciaisIA?.tipo_material || 'revolver',
@@ -78,7 +84,6 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
         formData.append('especie', especie);
         formData.append('dadosForm', JSON.stringify(form));
 
-        // Se colocou a foto no modal (seja para IA ou manual), ela vai na requisição!
         if (fotoObjeto) {
             formData.append('foto_objeto', fotoObjeto);
         }
@@ -88,6 +93,7 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
 
         try {
             setLoading(true);
+            // 🎯 2. REQUISIÇÃO COM responseType 'blob' PARA RECEBER ARQUIVO E HEADERS
             const response = await api.post(rotaEndpoint, formData, { responseType: 'blob' });
 
             const extensao = formatoDesejado === 'pdf' ? 'pdf' : 'docx';
@@ -98,8 +104,21 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
             link.href = window.URL.createObjectURL(blob);
             link.download = fileName;
             link.click();
+            link.remove();
 
-            alert(`Laudo em ${extensao.toUpperCase()} gerado com sucesso!`);
+            // 🎯 3. CAPTURA A FAV DETECTADA PELO BACKEND NO CABEÇALHO HTTP
+            const favDetectada = response.headers['x-fav-detectada'] || response.headers['X-Fav-Detectada'];
+
+            console.log("Headers recebidos do backend:", response.headers); // 👈 Olhe o F12 (Console) do navegador para ver se aparece aqui!
+            console.log("FAV Detectada:", favDetectada);
+
+            if (favDetectada) {
+                setNumeroFav(favDetectada);
+                setMostrarModalFav(true); 
+            } else {
+                alert(`Laudo em ${extensao.toUpperCase()} gerado com sucesso!`);
+            }
+
         } catch (error) {
             console.error('Erro ao gerar laudo:', error);
             alert('Erro ao processar o laudo no servidor.');
@@ -108,8 +127,36 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
         }
     };
 
+    // 🎯 4. FUNÇÃO QUE CHAMA A AUTOMAÇÃO DO PCNET QUANDO O PERITO CLICA EM "SIM"
+    const confirmarMovimentacaoFav = async () => {
+        if (!numeroFav) {
+            alert('Número da FAV inválido.');
+            return;
+        }
+
+        const usuarioLogado = JSON.parse(localStorage.getItem('usuario') || '{}');
+        const cpfPerito = usuarioLogado.cpf || localStorage.getItem('cpf_perito') || '';
+
+        setCarregandoFav(true);
+        try {
+            await api.post('/pcnet/movimentar-fav', {
+                numeroFav: numeroFav,
+                novoLacre: novoLacreFav || null,
+                cpf: cpfPerito
+            });
+
+            alert('FAV movimentada e custódia atualizada com sucesso no PCNet!');
+            setMostrarModalFav(false);
+            setNovoLacreFav('');
+        } catch (error) {
+            alert('Erro na automação do PCNet: ' + (error.response?.data?.erro || error.message));
+        } finally {
+            setCarregandoFav(false);
+        }
+    };
+
     return (
-        <div className="max-w-4xl mx-auto p-8 bg-white shadow-lg rounded-xl border border-gray-100">
+        <div className="max-w-4xl mx-auto p-8 bg-white shadow-lg rounded-xl border border-gray-100 relative">
             <div className="mb-8 border-b pb-4 flex justify-between items-center">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-800">Elaboração e Emissão de Laudos</h2>
@@ -178,6 +225,62 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
                     </div>
                 )}
             </form>
+
+            {/* 🎯 5. MODAL / BALÃO DE PERGUNTA DA FAV QUE APARECE APÓS O DOWNLOAD */}
+            {mostrarModalFav && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+                    <div className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md border border-gray-100 space-y-4">
+                        <div className="text-center">
+                            <span className="text-3xl">🚀</span>
+                            <h3 className="text-lg font-bold text-gray-900 mt-2">Laudo gerado e baixado!</h3>
+                            <p className="text-sm text-gray-600 mt-1">
+                                Detectamos a FAV <strong className="text-blue-600">{numeroFav}</strong> no cabeçalho. Deseja movimentá-la automaticamente no PCNet?
+                            </p>
+                        </div>
+
+                        <div className="space-y-3 pt-2">
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1">Número da FAV</label>
+                                <input 
+                                    type="text" 
+                                    value={numeroFav} 
+                                    onChange={(e) => setNumeroFav(e.target.value)} 
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-gray-50 font-bold" 
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-700 mb-1">Novo Lacre (Opcional - Se houve rompimento)</label>
+                                <input 
+                                    type="text" 
+                                    value={novoLacreFav} 
+                                    onChange={(e) => setNovoLacreFav(e.target.value)} 
+                                    placeholder="Ex: 998877" 
+                                    className="w-full p-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex space-x-3 pt-3">
+                            <button 
+                                type="button"
+                                onClick={() => setMostrarModalFav(false)}
+                                disabled={carregandoFav}
+                                className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold py-2 px-4 rounded-lg text-sm transition cursor-pointer"
+                            >
+                                Não, obrigado
+                            </button>
+                            <button 
+                                type="button"
+                                onClick={confirmarMovimentacaoFav}
+                                disabled={carregandoFav}
+                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg text-sm transition flex items-center justify-center cursor-pointer disabled:opacity-50"
+                            >
+                                {carregandoFav ? 'Movimentando...' : 'Sim, movimentar'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

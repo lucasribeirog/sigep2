@@ -13,7 +13,9 @@ const swaggerDocument = require('./src/config/swagger');
 const app = express();
 
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    exposedHeaders: ['X-Fav-Detectada', 'x-fav-detectada']
+}));
 
 // Registro das Rotas
 app.use('/api', authRoutes);
