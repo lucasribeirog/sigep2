@@ -103,7 +103,7 @@ async function desativarContadorSessao(page) {
 async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
     const browser = await puppeteer.launch({
         browser: 'firefox',
-        headless: true, 
+        headless: false, 
         defaultViewport: null,
         args: [
             '--start-maximized',
@@ -287,7 +287,7 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
             
             const browser = await puppeteer.launch({
                 browser: 'firefox',
-                headless: true, 
+                headless: false, 
                 defaultViewport: null,
                 args: ['--start-maximized']
             });

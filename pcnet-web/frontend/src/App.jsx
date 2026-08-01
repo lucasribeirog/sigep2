@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Login from './components/Login';
 import GeradorLaudo from './components/GeradorLaudo';
-import PcnetConfig from './components/PcnetConfig'; // NOVO COMPONENTE IMPORTADO
+import PcnetConfig from './components/PcnetConfig';
 import api from '../src/api/pcnet';
 
 export default function App() {
@@ -9,7 +9,8 @@ export default function App() {
     const [abaAtiva, setAbaAtiva] = useState('inicio'); 
     const [especieSelecionada, setEspecieSelecionada] = useState(''); 
 
-    // Estados do Modal de Foto
+    // Modais e Estados da IA
+    const [modalEspecieAberto, setModalEspecieAberto] = useState(false);
     const [modalFotoAberto, setModalFotoAberto] = useState(false);
     const [arquivoFoto, setArquivoFoto] = useState(null);
     const [carregandoIA, setCarregandoIA] = useState(false);
@@ -28,7 +29,6 @@ export default function App() {
 
     const handleLogout = async () => {
         try {
-            // Se o perito estava com o robô ligado, desliga no backend por segurança
             const cpfPerito = localStorage.getItem('cpf_perito');
             if (cpfPerito) {
                 await api.post('/pcnet/logout', { cpf: cpfPerito });
@@ -36,7 +36,6 @@ export default function App() {
         } catch (err) {
             console.error('Erro ao comunicar o logout ao backend:', err);
         } finally {
-            // Limpa tudo
             localStorage.removeItem('token');
             localStorage.removeItem('usuario');
             localStorage.removeItem('cpf_perito');
@@ -46,49 +45,62 @@ export default function App() {
 
     const handleApiError = (error) => {
         const mensagemErro = error.response?.data?.erro || error.message || '';
-        
         if (mensagemErro.includes('expirou') || mensagemErro.includes('Nenhuma sessão') || mensagemErro.includes('loginVM.zul')) {
             alert('A sessão do robô no PCNet expirou. Por favor, vá até a aba "Integrações" e conecte novamente.');
-            // NÃO remove o usuário do Nexus, apenas manda ele reconectar o robô
             setAbaAtiva('config');
             return true; 
         }
         return false;
     };
 
-    const lidarComCliqueBalistica = () => {
+    // 🎯 1. Clique inicial no botão azul: Pergunta qual laudo o perito quer fazer
+    const lidarComCliqueNovoLaudo = () => {
         setArquivoFoto(null); 
         setDadosPreenchidosIA(null);
-        setModalFotoAberto(true);
+        setModalEspecieAberto(true);
+    };
+
+    // 🎯 2. Lógica inteligente de roteamento após escolher a espécie
+    const escolherEspecieParaFluxo = (especie) => {
+        setEspecieSelecionada(especie);
+        setModalEspecieAberto(false);
+
+        // Se for drogas, não tem foto. Pula direto para o gerador!
+        if (especie === 'Laudo Preliminar de Constatação de Drogas') {
+            setArquivoFoto(null);
+            setDadosPreenchidosIA(null);
+            setModalFotoAberto(false);
+            setAbaAtiva('gerador');
+        } else {
+            // Se for Balística ou Patrimônio, abre o modal de foto
+            setModalFotoAberto(true);
+        }
     };
 
     const prosseguirSemFoto = () => {
         setModalFotoAberto(false);
         setArquivoFoto(null);
         setDadosPreenchidosIA(null);
-        setEspecieSelecionada('Eficiencia Armas de Fogo e/ou municoes');
         setAbaAtiva('gerador');
     };
 
     const prosseguirManualComFoto = () => {
         setModalFotoAberto(false);
         setDadosPreenchidosIA(null); 
-        setEspecieSelecionada('Eficiencia Armas de Fogo e/ou municoes');
         setAbaAtiva('gerador');
     };
 
     const enviarFotoParaIA = async () => {
-        if (!arquivoFoto) return;
+        if (!arquivoFoto || !especieSelecionada) return;
         const formData = new FormData();
         formData.append('foto_objeto', arquivoFoto);
-        formData.append('especie', 'Eficiencia Armas de Fogo e/ou municoes');
+        formData.append('especie', especieSelecionada);
 
         try {
             setCarregandoIA(true);
             const response = await api.post('analisar-foto', formData, { responseType: 'json' });
             setDadosPreenchidosIA(response.data.dadosForm);
             setModalFotoAberto(false);
-            setEspecieSelecionada('Eficiencia Armas de Fogo e/ou municoes');
             setAbaAtiva('gerador');
         } catch (error) {
             if (!handleApiError(error)) {
@@ -165,48 +177,60 @@ export default function App() {
                             <div className="space-y-2">
                                 <h2 className="text-3xl font-bold">Bem-vindo(a), {usuario.nome?.split(' ')[0] || 'Perito(a)'}!</h2>
                                 <p className="text-sky-100 text-sm max-w-xl">
-                                    Plataforma automatizada para suporte à elaboração, padronização e emissão de laudos periciais de balística e patrimônio.
+                                    Plataforma automatizada para suporte à elaboração, padronização e emissão de laudos periciais de balística, patrimônio e drogas.
                                 </p>
                             </div>
                             <button
-                                onClick={lidarComCliqueBalistica}
+                                onClick={lidarComCliqueNovoLaudo}
                                 className="mt-6 md:mt-0 bg-white text-sky-800 hover:bg-sky-50 font-bold px-6 py-3 rounded-xl shadow transition cursor-pointer text-sm"
                             >
                                 Iniciar Novo Laudo ➔
                             </button>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+                            {/* Card Balística */}
                             <div 
-                                onClick={lidarComCliqueBalistica}
-                                className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-sky-300 transition cursor-pointer group flex items-start gap-4"
+                                onClick={() => escolherEspecieParaFluxo('Eficiencia Armas de Fogo e/ou municoes')}
+                                className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-sky-300 transition cursor-pointer group"
                             >
-                                <div className="p-3 bg-sky-50 text-[#0284C7] rounded-xl group-hover:bg-[#0284C7] group-hover:text-white transition flex-shrink-0 flex items-center justify-center">
+                                <div className="p-3 bg-sky-50 text-[#0284C7] rounded-xl group-hover:bg-[#0284C7] group-hover:text-white transition w-max mb-4">
                                     <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <circle cx="12" cy="12" r="10" />
                                         <circle cx="12" cy="12" r="6" />
                                         <circle cx="12" cy="12" r="2" />
                                     </svg>
                                 </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-800 group-hover:text-[#0284C7] transition">Eficiência de Arma de Fogo</h3>
-                                    <p className="text-sm text-gray-500 mt-1">Preencha com suporte opcional de IA visual e parâmetros de balística.</p>
-                                </div>
+                                <h3 className="text-lg font-bold text-gray-800 group-hover:text-[#0284C7] transition">Eficiência de Arma (Balística)</h3>
+                                <p className="text-sm text-gray-500 mt-1">Preencha com suporte de IA visual e parâmetros de balística.</p>
                             </div>
 
+                            {/* Card Patrimônio */}
                             <div 
-                                onClick={() => { setEspecieSelecionada('Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem'); setAbaAtiva('gerador'); }}
-                                className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-sky-300 transition cursor-pointer group flex items-start gap-4"
+                                onClick={() => escolherEspecieParaFluxo('Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem')}
+                                className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-sky-300 transition cursor-pointer group"
                             >
-                                <div className="p-3 bg-sky-50 text-[#0284C7] rounded-xl group-hover:bg-[#0284C7] group-hover:text-white transition flex-shrink-0 flex items-center justify-center">
+                                <div className="p-3 bg-sky-50 text-[#0284C7] rounded-xl group-hover:bg-[#0284C7] group-hover:text-white transition w-max mb-4">
                                     <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
                                     </svg>
                                 </div>
-                                <div>
-                                    <h3 className="text-lg font-bold text-gray-800 group-hover:text-[#0284C7] transition">Eficiência de Objeto (Patrimônio)</h3>
-                                    <p className="text-sm text-gray-500 mt-1">Gere laudos de instrumentos utilizados para ofender a integridade física.</p>
+                                <h3 className="text-lg font-bold text-gray-800 group-hover:text-[#0284C7] transition">Eficiência de Objeto (Patrimônio)</h3>
+                                <p className="text-sm text-gray-500 mt-1">Instrumentos utilizados para ofender a integridade física.</p>
+                            </div>
+
+                            {/* Card Drogas */}
+                            <div 
+                                onClick={() => escolherEspecieParaFluxo('Laudo Preliminar de Constatação de Drogas')}
+                                className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-emerald-500 transition cursor-pointer group"
+                            >
+                                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl group-hover:bg-emerald-600 group-hover:text-white transition w-max mb-4">
+                                    <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                    </svg>
                                 </div>
+                                <h3 className="text-lg font-bold text-gray-800 group-hover:text-emerald-600 transition">Constatação de Drogas</h3>
+                                <p className="text-sm text-gray-500 mt-1">Laudos preliminares de Cocaína e Maconha (preenchimento direto).</p>
                             </div>
                         </div>
                     </div>
@@ -224,13 +248,39 @@ export default function App() {
                     <PcnetConfig />
                 )}
 
-                {/* MODAL MODERNO DE UPLOAD DE FOTO */}
+                {/* MODAL 1: Escolher Espécie (Ao clicar no Botão Azul Principal) */}
+                {modalEspecieAberto && (
+                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                        <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl text-center space-y-4">
+                            <h3 className="text-xl font-bold text-gray-800">Selecione o Tipo de Laudo</h3>
+                            <p className="text-gray-500 text-sm mb-4">Qual natureza pericial deseja realizar?</p>
+                            
+                            <div className="flex flex-col gap-3">
+                                <button onClick={() => escolherEspecieParaFluxo('Eficiencia Armas de Fogo e/ou municoes')} className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-blue-50 border hover:border-blue-300 rounded-lg font-semibold text-gray-700 transition cursor-pointer">
+                                    🔫 Eficiência de Arma de Fogo / Munição
+                                </button>
+                                <button onClick={() => escolherEspecieParaFluxo('Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem')} className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-blue-50 border hover:border-blue-300 rounded-lg font-semibold text-gray-700 transition cursor-pointer">
+                                    🔪 Eficiência de Objeto (Patrimônio)
+                                </button>
+                                <button onClick={() => escolherEspecieParaFluxo('Laudo Preliminar de Constatação de Drogas')} className="w-full text-left px-4 py-3 bg-gray-50 hover:bg-emerald-50 border hover:border-emerald-300 rounded-lg font-semibold text-gray-700 transition cursor-pointer">
+                                    🌿 Constatação Preliminar de Drogas
+                                </button>
+                            </div>
+                            
+                            <button onClick={() => setModalEspecieAberto(false)} className="mt-4 text-sm text-gray-500 hover:text-gray-800 cursor-pointer">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* MODAL 2: UPLOAD DE FOTO (Apenas para Balística e Patrimônio) */}
                 {modalFotoAberto && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                         <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl text-center space-y-6">
                             <div>
                                 <h3 className="text-xl font-bold text-gray-800">Foto do Vestígio (Opcional)</h3>
-                                <p className="text-gray-500 text-sm mt-1">Insira a foto com régua se deseja que ela apareça no laudo.</p>
+                                <p className="text-gray-500 text-sm mt-1">Insira a foto com régua se deseja que a IA preencha os dados automaticamente.</p>
                             </div>
 
                             <label className="border-2 border-dashed border-sky-300 bg-sky-50/50 rounded-xl p-6 flex flex-col items-center justify-center cursor-pointer hover:bg-sky-50 transition-all">
@@ -255,7 +305,7 @@ export default function App() {
                                         disabled={carregandoIA}
                                         className="w-full bg-[#0284C7] hover:bg-[#0284C7]/90 text-white font-medium py-3 rounded-xl transition-all text-sm shadow-md cursor-pointer flex items-center justify-center"
                                     >
-                                        {carregandoIA ? 'Analisando...' : '✨ Analisar com IA e Preencher'}
+                                        {carregandoIA ? 'Analisando com IA...' : '✨ Analisar com IA e Preencher'}
                                     </button>
                                     <button 
                                         onClick={prosseguirManualComFoto}

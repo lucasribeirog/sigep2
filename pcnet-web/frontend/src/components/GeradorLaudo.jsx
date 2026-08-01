@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import api from '../api/pcnet';
 import FormBalistica from './forms/FormBalistica';
 import FormPatrimonio from './forms/FormPatrimonio';
+import FormDrogas from './forms/FormDrogas'; // 🎯 Nova importação
 
 export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = null, fotoObjetoInicial = null }) {
     const [especie, setEspecie] = useState(especieInicial);
@@ -16,6 +17,7 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
     const [carregandoFav, setCarregandoFav] = useState(false);
 
     const [form, setForm] = useState({
+        // === CAMPOS BALÍSTICA E PATRIMÔNIO ===
         tipo_material: dadosIniciaisIA?.tipo_material || 'revolver',
         pertence_pm: false,
         instituicao_carga: 'Polícia Militar do Estado de Minas Gerais',
@@ -62,7 +64,21 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
         compr_objeto: '',
         larg_objeto: '',
         espessura_objeto: '',
-        massa_objeto: ''
+        massa_objeto: '',
+
+        // === 🎯 NOVOS CAMPOS: LAUDO DE DROGAS ===
+        droga: dadosIniciaisIA?.droga || 'cocaina',
+        cor_material: dadosIniciaisIA?.cor_material || 'branca',
+        qtd_involucros: dadosIniciaisIA?.qtd_involucros || '',
+        massa_liquida: dadosIniciaisIA?.massa_liquida || '',
+        extenso_massa: '',
+        envelope_recebimento: dadosIniciaisIA?.envelope_recebimento || '',
+        resultado: dadosIniciaisIA?.resultado || 'positivo',
+        tipo_encaminhamento: 'unificado',
+        envelope_encaminhamento: '',
+        massa_amostra: '',
+        fav_amostra: '',
+        envelope_amostra: ''
     });
 
     const handleChange = (e) => {
@@ -79,6 +95,12 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
             return;
         }
 
+        // 🛡️ Validação nativa do HTML5 (avisa e aponta o campo em falta)
+        const formElement = document.querySelector('form');
+        if (formElement && !formElement.reportValidity()) {
+            return; // Interrompe o envio se houver campos obrigatórios vazios
+        }
+
         const formData = new FormData();
         formData.append('arquivo_pcnet', arquivoPcnet); 
         formData.append('especie', especie);
@@ -93,7 +115,6 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
 
         try {
             setLoading(true);
-            // 🎯 2. REQUISIÇÃO COM responseType 'blob' PARA RECEBER ARQUIVO E HEADERS
             const response = await api.post(rotaEndpoint, formData, { responseType: 'blob' });
 
             const extensao = formatoDesejado === 'pdf' ? 'pdf' : 'docx';
@@ -106,11 +127,7 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
             link.click();
             link.remove();
 
-            // 🎯 3. CAPTURA A FAV DETECTADA PELO BACKEND NO CABEÇALHO HTTP
             const favDetectada = response.headers['x-fav-detectada'] || response.headers['X-Fav-Detectada'];
-
-            console.log("Headers recebidos do backend:", response.headers); // 👈 Olhe o F12 (Console) do navegador para ver se aparece aqui!
-            console.log("FAV Detectada:", favDetectada);
 
             if (favDetectada) {
                 setNumeroFav(favDetectada);
@@ -176,11 +193,12 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
                         value={especie} 
                         onChange={(e) => setEspecie(e.target.value)}
                         className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white text-sm"
-                        required
+                        
                     >
                         <option value="">-- Selecione a Espécie --</option>
                         <option value="Eficiencia Armas de Fogo e/ou municoes">Eficiência de Arma de Fogo e Munição (Balística)</option>
                         <option value="Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem">Eficiência e Prestabilidade de Objeto (Patrimônio)</option>
+                        <option value="Laudo Preliminar de Constatação de Drogas">Laudo Preliminar de Constatação de Drogas</option> {/* 🎯 Nova Espécie */}
                     </select>
                 </div>
 
@@ -191,7 +209,7 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
                         accept=".docx" 
                         onChange={(e) => setArquivoPcnet(e.target.files[0])}
                         className="w-full p-2 border border-gray-300 rounded-lg bg-gray-50 text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
-                        required
+                        
                     />
                 </div>
 
@@ -202,6 +220,10 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
                 {especie === 'Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem' && (
                     <FormPatrimonio form={form} onChange={handleChange} />
                 )}
+
+                {especie === 'Laudo Preliminar de Constatação de Drogas' && (
+                    <FormDrogas dados={form} onChange={handleChange} /> 
+                )} {/* 🎯 Novo Componente */}
 
                 {especie && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-4 border-t border-gray-200">

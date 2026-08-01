@@ -214,7 +214,7 @@ const swaggerDocument = {
                   },
                   dadosForm: { 
                     type: 'string', 
-                    description: 'Objeto JSON transformado em string com as respostas do formulário de drogas ou balística.\n\n**Exemplo (Drogas):**\n```json\n{\n  "droga": "cocaina",\n  "cor_material": "branca",\n  "qtd_involucros": 2,\n  "massa_liquida": "10,5",\n  "extenso_massa": "dez gramas e cinco decigramas",\n  "numero_envelope": "123456",\n  "resultado": "positivo",\n  "tipo_encaminhamento": "fragmentado",\n  "massa_amostra": "2,0",\n  "fav_amostra": "998877/2026",\n  "envelope_amostra": "654321",\n  "envelope_restante": "111222"\n}\n```',
+                    description: 'Objeto JSON transformado em string com as respostas do formulário de drogas ou balística.\n\n**Exemplo (Drogas):**\n```json\n{\n  "droga": "cocaina",\n  "cor_material": "branca",\n  "qtd_involucros": 2,\n  "massa_liquida": "10,5",\n  "extenso_massa": "dez gramas e cinco decigramas",\n  "numero_envelope": "123456",\n  "resultado": "positivo",\n  "tipo_encaminhamento": "fragmentado",\n  "massa_amostra": "2,0",\n  "fav_amostra": "998877/2026",\n  "envelope_amostra": "654321",\n  "envelope_encaminhamento": "111222"\n}\n```',
                     example: '{"droga": "cocaina", "cor_material": "branca", "qtd_involucros": 1, "massa_liquida": "5,2", "resultado": "positivo"}' 
                   },
                   perito: {

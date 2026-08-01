@@ -79,7 +79,7 @@ function processarDrogas(dadosForm, caminhoFoto = null, favDetectadaHeader = nul
         if (!dadosForm.envelope_amostra || String(dadosForm.envelope_amostra).trim() === '') {
             throw new Error('Para o encaminhamento fragmentado, o número do envelope da amostra é obrigatório.');
         }
-        if (!dadosForm.envelope_restante || String(dadosForm.envelope_restante).trim() === '') {
+        if (!dadosForm.envelope_encaminhamento || String(dadosForm.envelope_encaminhamento).trim() === '') {
             throw new Error('Para o encaminhamento fragmentado, o número do envelope do restante do material é obrigatório.');
         }
     } else {
@@ -152,8 +152,7 @@ function processarDrogas(dadosForm, caminhoFoto = null, favDetectadaHeader = nul
         
         massa_amostra: dadosForm.massa_amostra || '',
         fav_amostra: dadosForm.fav_amostra || '',
-        envelope_amostra: dadosForm.envelope_amostra || '',
-        envelope_restante: dadosForm.envelope_restante || ''
+        envelope_amostra: dadosForm.envelope_amostra || ''
     };
 }
 
