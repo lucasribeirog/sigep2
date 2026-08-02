@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import api from '../api/pcnet';
+import Register from './Register'; // 🎯 Importa o componente de registro que criamos
 
 export default function Login({ onLoginSuccess }) {
     const [email, setEmail] = useState('');
     const [senha, setSenha] = useState('');
     const [loading, setLoading] = useState(false);
     const [erro, setErro] = useState('');
+    const [registrando, setRegistrando] = useState(false); // 🎯 Estado para alternar entre Login e Cadastro
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -30,6 +32,23 @@ export default function Login({ onLoginSuccess }) {
             setLoading(false);
         }
     };
+
+    // 🎯 Se o usuário clicou em se cadastrar, renderizamos o componente Register.jsx
+    if (registrando) {
+        return (
+            <div className="min-h-screen flex flex-col items-center justify-center bg-gray-900 px-4 py-8">
+                <Register aoConcluirRegistro={() => setRegistrando(false)} />
+                <div className="mt-4 text-center">
+                    <button
+                        onClick={() => setRegistrando(false)}
+                        className="text-sm text-sky-400 hover:text-sky-300 font-medium underline cursor-pointer"
+                    >
+                        ← Voltar para a tela de Login
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen flex items-center justify-center bg-gray-900 px-4">
@@ -86,6 +105,19 @@ export default function Login({ onLoginSuccess }) {
                         {loading ? 'Autenticando...' : 'Entrar no Nexus'}
                     </button>
                 </form>
+
+                {/* 🎯 Link para alternar para a tela de registro validado pelo PCNet */}
+                <div className="mt-6 text-center border-t border-gray-100 pt-4">
+                    <p className="text-xs text-gray-500">
+                        Ainda não tem acesso ao sistema?{' '}
+                        <button
+                            onClick={() => setRegistrando(true)}
+                            className="text-sky-600 hover:text-sky-800 font-semibold underline cursor-pointer"
+                        >
+                            Cadastre-se via PCNet
+                        </button>
+                    </p>
+                </div>
             </div>
         </div>
     );

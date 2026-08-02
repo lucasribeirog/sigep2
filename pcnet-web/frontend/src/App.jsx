@@ -20,9 +20,18 @@ export default function App() {
         const usuarioSalvo = localStorage.getItem('usuario');
         if (usuarioSalvo) {
             try {
-                setUsuario(JSON.parse(usuarioSalvo));
+                const dadosLidos = JSON.parse(usuarioSalvo);
+                // 🎯 Blindagem: Só aceita o login automático se o objeto tiver um e-mail ou nome válido!
+                if (dadosLidos && (dadosLidos.email || dadosLidos.nome)) {
+                    setUsuario(dadosLidos);
+                } else {
+                    // Se for um dado quebrado ou vazio de testes velhos, ele apaga e força o login
+                    localStorage.removeItem('usuario');
+                    setUsuario(null);
+                }
             } catch (e) {
                 localStorage.removeItem('usuario');
+                setUsuario(null);
             }
         }
     }, []);
@@ -132,7 +141,7 @@ export default function App() {
 
                 <div className="flex items-center gap-4">
                     <p className="text-xs text-gray-500 hidden sm:block">
-                        Conta: <span className="font-medium text-gray-700">{usuario.email}</span>
+                        Conta: <span className="font-medium text-gray-700">{usuario?.email || usuario?.nome || 'Carregando...'}</span>
                     </p>
                     <button 
                         onClick={handleLogout}

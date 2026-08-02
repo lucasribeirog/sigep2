@@ -103,7 +103,7 @@ async function desativarContadorSessao(page) {
 async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
     const browser = await puppeteer.launch({
         browser: 'firefox',
-        headless: false, 
+        headless: true, 
         defaultViewport: null,
         args: [
             '--start-maximized',
@@ -131,21 +131,28 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
         await page.type('input[name="j_password"]', senha);
         await page.keyboard.press('Enter');
 
-        console.log('Aguardando os botões de e-mail aparecerem no HTML...');
+        console.log('Aguardando resposta do login no PCNet...');
         
+        // 🎯 Racha a corrida para ver se apareceu erro de credencial OU se avançou para os e-mails do 2FA
         const resultadoLogin = await Promise.race([
             page.waitForFunction(() => {
                 const spans = Array.from(document.querySelectorAll('span.z-label'));
                 return spans.some(span => span.textContent && span.textContent.includes('E-mail'));
-            }, { timeout: 30000 }).then(() => 'SUCESSO_2FA'),
+            }, { timeout: 25000 }).then(() => 'SUCESSO_2FA'),
             
-            page.waitForSelector('.error, .msg_erro, div[style*="color: red"]', { timeout: 5000 })
+            page.waitForSelector('.error, .msg_erro, div[style*="color: red"], td.msg_erro', { timeout: 25000 })
                 .then(() => 'ERRO_CREDENCIAL')
                 .catch(() => 'TIMEOUT_IGNORADO')
         ]);
 
-        if (resultadoLogin === 'ERRO_CREDENCIAL') {
-            throw new Error('Falha no login: Credenciais inválidas ou erro reportado pelo sistema.');
+        if (resultadoLogin === 'ERRO_CREDENCIAL' || resultadoLogin === 'TIMEOUT_IGNORADO') {
+            // Verifica se o texto de erro está visível na página para dar uma resposta exata
+            const textoErroTela = await page.evaluate(() => {
+                const elem = document.querySelector('.error, .msg_erro, div[style*="color: red"], td.msg_erro');
+                return elem ? elem.textContent.trim() : null;
+            });
+
+            throw new Error(textoErroTela || 'Credenciais inválidas ou falha ao autenticar no PCNet.');
         }
 
         await desativarContadorSessao(page);
@@ -176,7 +183,14 @@ async function iniciarLoginPCNet(cpf, senha, tipoEmail = 'principal') {
     } catch (error) {
         if (browser) await browser.close().catch(() => {});
         sessoesPendentes.delete(cpf);
-        throw new Error('Falha no processo inicial do PCNet: ' + error.message);
+        
+        // Limpa a mensagem para o usuário final não ver detalhes de automação interna
+        let msgLimpa = error.message;
+        if (msgLimpa.includes('Falha no processo inicial') || msgLimpa.includes('não foi possível')) {
+            msgLimpa = 'CPF ou senha do PCNet incorretos.';
+        }
+        
+        throw new Error(msgLimpa);
     }
 }
 
@@ -287,7 +301,7 @@ async function acessarAceiteRequisicoes(cpf, codigoUnidade = 'C0053') {
             
             const browser = await puppeteer.launch({
                 browser: 'firefox',
-                headless: false, 
+                headless: true, 
                 defaultViewport: null,
                 args: ['--start-maximized']
             });
