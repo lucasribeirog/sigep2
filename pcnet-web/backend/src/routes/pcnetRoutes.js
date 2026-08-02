@@ -20,5 +20,8 @@ router.post('/movimentar-fav', pcnetController.movimentarFavRoute)
 
 router.post('/movimentar-favs-lote', pcnetController.processarMovimentacaoLote)
 
+//Rota : Status
+router.post('/status', pcnetController.checarStatusPcnet);
+
 
 module.exports = router;

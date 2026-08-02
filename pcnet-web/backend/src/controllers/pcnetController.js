@@ -1,5 +1,6 @@
 const { iniciarLoginPCNet, confirmarToken2FA, acessarAceiteRequisicoes,
-     obterCsvRequisicoes, movimentarFav, movimentarFavsLote, encerrarSessao } = require('../services/pcnetService');
+     obterCsvRequisicoes, movimentarFav, movimentarFavsLote, encerrarSessao, 
+    verificarStatusPCNet } = require('../services/pcnetService');
 const fs = require('fs');
 
 async function solicitarLogin(req, res) {
@@ -166,5 +167,25 @@ async function logout(req, res) {
     }
 }
 
+// Função para checar se o robô do PCNet está online
+async function checarStatusPcnet(req, res) {
+    try {
+        const { cpf } = req.body; // Pega o CPF que o App.jsx enviou
+        
+        if (!cpf) {
+            return res.json({ ativo: false });
+        }
+
+        // Chama a função que acabamos de criar no service
+        const status = await verificarStatusPCNet(cpf);
+        
+        // Devolve pro frontend (ex: { ativo: true })
+        res.json(status);
+        
+    } catch (err) {
+        res.status(500).json({ ativo: false, erro: 'Erro interno ao verificar status.' });
+    }
+}
+
 module.exports = { solicitarLogin, enviarToken, acessarRequisicoes, 
-    exportarCsv, movimentarFavRoute, processarMovimentacaoLote, logout};
+    exportarCsv, movimentarFavRoute, processarMovimentacaoLote, logout, checarStatusPcnet};

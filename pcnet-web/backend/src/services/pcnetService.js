@@ -772,6 +772,28 @@ async function encerrarSessao(identificador) {
     }
 }
 
+async function verificarStatusPCNet(cpf) {
+    try {
+        // 1. Verifica se a aba está aberta e rodando na memória agora
+        const sessaoAtiva = sessoesAtivas.get(cpf);
+        if (sessaoAtiva && sessaoAtiva.page && !sessaoAtiva.page.isClosed()) {
+            return { ativo: true };
+        }
+        
+        // 2. Se não estiver na memória ativa, verifica se há sessão válida salva no Banco SQLite
+        const cookiesData = await buscarSessaoDB(cpf);
+        if (cookiesData) {
+            return { ativo: true };
+        }
+
+        // Se não achou em nenhum lugar, a sessão morreu/não existe
+        return { ativo: false };
+    } catch (error) {
+        console.error(`Erro ao verificar status do PCNet para CPF ${cpf}:`, error.message);
+        return { ativo: false };
+    }
+}
+
 module.exports = {
     iniciarLoginPCNet,
     confirmarToken2FA,
@@ -779,5 +801,6 @@ module.exports = {
     obterCsvRequisicoes,
     movimentarFav,
     movimentarFavsLote,
-    encerrarSessao
+    encerrarSessao,
+    verificarStatusPCNet
 };

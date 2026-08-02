@@ -15,17 +15,20 @@ export default function App() {
     const [arquivoFoto, setArquivoFoto] = useState(null);
     const [carregandoIA, setCarregandoIA] = useState(false);
     const [dadosPreenchidosIA, setDadosPreenchidosIA] = useState(null);
+    
+    // Estado do Pop-up de Reconexão Automática do PCNet
+    const [modalReconnectAberto, setModalReconnectAberto] = useState(false);
 
+    // 🎯 EFEITO 1: Verifica se existe usuário logado na inicialização
     useEffect(() => {
         const usuarioSalvo = localStorage.getItem('usuario');
         if (usuarioSalvo) {
             try {
                 const dadosLidos = JSON.parse(usuarioSalvo);
-                // 🎯 Blindagem: Só aceita o login automático se o objeto tiver um e-mail ou nome válido!
+                // Blindagem: Só aceita se o objeto tiver um e-mail ou nome válido!
                 if (dadosLidos && (dadosLidos.email || dadosLidos.nome)) {
                     setUsuario(dadosLidos);
                 } else {
-                    // Se for um dado quebrado ou vazio de testes velhos, ele apaga e força o login
                     localStorage.removeItem('usuario');
                     setUsuario(null);
                 }
@@ -35,6 +38,33 @@ export default function App() {
             }
         }
     }, []);
+
+    // 🎯 EFEITO 2: Monitoramento silencioso da conexão do PCNet
+    useEffect(() => {
+        let intervalo;
+        
+        const verificarConexao = async () => {
+            const cpfPerito = localStorage.getItem('cpf_perito');
+            if (cpfPerito) {
+                try {
+                    const res = await api.post('/pcnet/status', { cpf: cpfPerito });
+                    if (!res.data.ativo) {
+                        setModalReconnectAberto(true);
+                    } else {
+                        setModalReconnectAberto(false);
+                    }
+                } catch (e) {
+                    setModalReconnectAberto(true);
+                }
+            }
+        };
+
+        if (usuario) {
+            intervalo = setInterval(verificarConexao, 30000); // Checa a cada 30 segundos
+        }
+
+        return () => clearInterval(intervalo);
+    }, [usuario]);
 
     const handleLogout = async () => {
         try {
@@ -62,26 +92,22 @@ export default function App() {
         return false;
     };
 
-    // 🎯 1. Clique inicial no botão azul: Pergunta qual laudo o perito quer fazer
     const lidarComCliqueNovoLaudo = () => {
         setArquivoFoto(null); 
         setDadosPreenchidosIA(null);
         setModalEspecieAberto(true);
     };
 
-    // 🎯 2. Lógica inteligente de roteamento após escolher a espécie
     const escolherEspecieParaFluxo = (especie) => {
         setEspecieSelecionada(especie);
         setModalEspecieAberto(false);
 
-        // Se for drogas, não tem foto. Pula direto para o gerador!
         if (especie === 'Laudo Preliminar de Constatação de Drogas') {
             setArquivoFoto(null);
             setDadosPreenchidosIA(null);
             setModalFotoAberto(false);
             setAbaAtiva('gerador');
         } else {
-            // Se for Balística ou Patrimônio, abre o modal de foto
             setModalFotoAberto(true);
         }
     };
@@ -184,7 +210,7 @@ export default function App() {
                     <div className="space-y-6">
                         <div className="bg-[#0284C7] text-white p-8 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-center">
                             <div className="space-y-2">
-                                <h2 className="text-3xl font-bold">Bem-vindo(a), {usuario.nome?.split(' ')[0] || 'Perito(a)'}!</h2>
+                                <h2 className="text-3xl font-bold">Bem-vindo(a), {usuario?.nome?.split(' ')[0] || 'Perito(a)'}!</h2>
                                 <p className="text-sky-100 text-sm max-w-xl">
                                     Plataforma automatizada para suporte à elaboração, padronização e emissão de laudos periciais de balística, patrimônio e drogas.
                                 </p>
@@ -198,7 +224,6 @@ export default function App() {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-                            {/* Card Balística */}
                             <div 
                                 onClick={() => escolherEspecieParaFluxo('Eficiencia Armas de Fogo e/ou municoes')}
                                 className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-sky-300 transition cursor-pointer group"
@@ -214,7 +239,6 @@ export default function App() {
                                 <p className="text-sm text-gray-500 mt-1">Preencha com suporte de IA visual e parâmetros de balística.</p>
                             </div>
 
-                            {/* Card Patrimônio */}
                             <div 
                                 onClick={() => escolherEspecieParaFluxo('Eficiencia e Prestabilidade de Objeto Utilizado Para Ofender a Integridade Fisica de Outrem')}
                                 className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-sky-300 transition cursor-pointer group"
@@ -228,7 +252,6 @@ export default function App() {
                                 <p className="text-sm text-gray-500 mt-1">Instrumentos utilizados para ofender a integridade física.</p>
                             </div>
 
-                            {/* Card Drogas */}
                             <div 
                                 onClick={() => escolherEspecieParaFluxo('Laudo Preliminar de Constatação de Drogas')}
                                 className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 hover:shadow-md hover:border-emerald-500 transition cursor-pointer group"
@@ -257,7 +280,7 @@ export default function App() {
                     <PcnetConfig />
                 )}
 
-                {/* MODAL 1: Escolher Espécie (Ao clicar no Botão Azul Principal) */}
+                {/* MODAL 1: Escolher Espécie */}
                 {modalEspecieAberto && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                         <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl text-center space-y-4">
@@ -283,7 +306,7 @@ export default function App() {
                     </div>
                 )}
 
-                {/* MODAL 2: UPLOAD DE FOTO (Apenas para Balística e Patrimônio) */}
+                {/* MODAL 2: UPLOAD DE FOTO */}
                 {modalFotoAberto && (
                     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                         <div className="bg-white rounded-2xl p-8 w-full max-w-md shadow-2xl text-center space-y-6">
@@ -333,6 +356,43 @@ export default function App() {
                                     </button>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {/* 🚨 MODAL DE QUEDA DO PCNET (Aparece sozinho se a conexão cair) */}
+                {modalReconnectAberto && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+                        <div className="bg-white rounded-2xl p-8 w-full max-w-sm shadow-2xl text-center space-y-4 transform transition-all">
+                            
+                            <div className="mx-auto w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mb-2">
+                                <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                                </svg>
+                            </div>
+                            
+                            <h3 className="text-xl font-black text-gray-800">Sessão Expirada</h3>
+                            
+                            <p className="text-gray-500 text-sm leading-relaxed mb-6">
+                                O sistema de segurança do PCNet encerrou sua conexão por inatividade. Para continuar salvando e movimentando seus laudos, precisamos reconectar.
+                            </p>
+                            
+                            <button 
+                                onClick={() => {
+                                    setModalReconnectAberto(false);
+                                    setAbaAtiva('config'); 
+                                }}
+                                className="w-full bg-[#0284C7] hover:bg-sky-700 text-white font-bold py-3 rounded-xl shadow-md transition cursor-pointer"
+                            >
+                                Reconectar Agora ➔
+                            </button>
+                            
+                            <button 
+                                onClick={() => setModalReconnectAberto(false)}
+                                className="w-full text-sm text-gray-400 hover:text-gray-600 font-medium cursor-pointer mt-2"
+                            >
+                                Lembrar mais tarde
+                            </button>
                         </div>
                     </div>
                 )}

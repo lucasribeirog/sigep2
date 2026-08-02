@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import api from '../api/pcnet';
 
 export default function PcnetConfig() {
@@ -12,6 +12,27 @@ export default function PcnetConfig() {
     const [loading, setLoading] = useState(false);
     const [erro, setErro] = useState('');
     const [sucesso, setSucesso] = useState(false);
+
+    // 🎯 NOVO: Verifica silenciosamente se o robô já está online quando a aba abre
+    useEffect(() => {
+        const verificarConexaoAtiva = async () => {
+            const cpfSalvo = localStorage.getItem('cpf_perito');
+            if (cpfSalvo) {
+                try {
+                    const res = await api.post('/pcnet/status', { cpf: cpfSalvo });
+                    if (res.data.ativo) {
+                        setCpf(cpfSalvo); // Preenche o CPF na tela
+                        setSucesso(true); // Muda direto para a tela de Conectado
+                    }
+                } catch (error) {
+                    // Se der erro ou estiver offline, apenas deixa no formulário padrão
+                    console.error("Erro ao checar status silencioso:", error);
+                }
+            }
+        };
+
+        verificarConexaoAtiva();
+    }, []);
 
     const handleIniciarLogin = async (e) => {
         e.preventDefault();
@@ -77,102 +98,109 @@ export default function PcnetConfig() {
                 </div>
             )}
 
-            {sucesso && (
-                <div className="mb-6 p-4 bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg flex justify-between items-center">
+            {/* 🎯 LÓGICA DE EXIBIÇÃO CORRIGIDA */}
+            {sucesso ? (
+                // TELA 1: SE ESTIVER CONECTADO, MOSTRA SÓ O AVISO E O BOTÃO DE SAIR
+                <div className="mb-6 p-6 bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl flex justify-between items-center shadow-sm">
                     <div>
-                        <strong>✅ Robô Conectado!</strong> A sessão do Puppeteer está ativa para o CPF: {cpf}.
+                        <strong className="text-lg block mb-1">✅ Robô Conectado!</strong> 
+                        A sessão de automação está ativa para o CPF: <strong>{cpf}</strong>.
                     </div>
                     <button 
                         onClick={handleDesconectar} 
                         disabled={loading}
-                        className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-xs font-bold transition cursor-pointer"
+                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg text-sm font-bold transition cursor-pointer shadow-md disabled:bg-gray-400"
                     >
-                        Desconectar
+                        {loading ? 'Desconectando...' : 'Desconectar'}
                     </button>
                 </div>
-            )}
-
-            {!etapa2FA ? (
-                <form onSubmit={handleIniciarLogin} className="space-y-5 bg-gray-50 p-6 rounded-xl border border-gray-200" autoComplete="off">
-                    <h3 className="font-bold text-gray-700 mb-2">Credenciais Institucionais</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">CPF</label>
-                            <input 
-                                type="text" 
-                                value={cpf} 
-                                onChange={(e) => setCpf(e.target.value)}
-                                placeholder="Digite apenas números ou com pontos" 
-                                className="w-full p-3 border border-gray-300 rounded-lg text-sm bg-white"
-                                autoComplete="off"
-                                required 
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Senha do PCNet</label>
-                            <input 
-                                type="password" 
-                                value={senha} 
-                                onChange={(e) => setSenha(e.target.value)}
-                                placeholder="••••••••" 
-                                className="w-full p-3 border border-gray-300 rounded-lg text-sm bg-white"
-                                autoComplete="new-password"
-                                required 
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Canal do Token 2FA</label>
-                        <select 
-                            value={tipoEmail} 
-                            onChange={(e) => setTipoEmail(e.target.value)}
-                            className="w-full p-3 border border-gray-300 rounded-lg text-sm bg-white"
-                        >
-                            <option value="principal">E-mail Principal</option>
-                            <option value="secundario">E-mail Secundário</option>
-                        </select>
-                    </div>
-                    <button 
-                        type="submit" 
-                        disabled={loading}
-                        className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition cursor-pointer"
-                    >
-                        {loading ? 'Ligando o Robô...' : 'Conectar ao PCNet'}
-                    </button>
-                </form>
             ) : (
-                <form onSubmit={handleValidar2FA} className="space-y-5 bg-blue-50 p-6 rounded-xl border border-blue-200" autoComplete="off">
-                    <h3 className="font-bold text-blue-900 mb-2">Verificação em Duas Etapas</h3>
-                    <div>
-                        <label className="block text-xs font-semibold text-blue-800 uppercase mb-1">Código de 6 Dígitos</label>
-                        <input 
-                            type="text" 
-                            maxLength="6"
-                            value={token} 
-                            onChange={(e) => setToken(e.target.value)}
-                            placeholder="000000" 
-                            className="w-full md:w-1/2 p-3 border border-blue-300 rounded-lg text-center tracking-widest text-lg font-bold bg-white"
-                            autoComplete="off"
-                            required 
-                        />
-                    </div>
-                    <div className="flex gap-4">
-                        <button 
-                            type="submit" 
-                            disabled={loading}
-                            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition cursor-pointer"
-                        >
-                            {loading ? 'Validando...' : 'Confirmar Token'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => { setEtapa2FA(false); setToken(''); }}
-                            className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg transition cursor-pointer"
-                        >
-                            Cancelar
-                        </button>
-                    </div>
-                </form>
+                // TELA 2: SE NÃO ESTIVER CONECTADO, MOSTRA OS FORMULÁRIOS
+                <>
+                    {!etapa2FA ? (
+                        <form onSubmit={handleIniciarLogin} className="space-y-5 bg-gray-50 p-6 rounded-xl border border-gray-200" autoComplete="off">
+                            <h3 className="font-bold text-gray-700 mb-2">Credenciais Institucionais</h3>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">CPF</label>
+                                    <input 
+                                        type="text" 
+                                        value={cpf} 
+                                        onChange={(e) => setCpf(e.target.value)}
+                                        placeholder="Digite apenas números ou com pontos" 
+                                        className="w-full p-3 border border-gray-300 rounded-lg text-sm bg-white"
+                                        autoComplete="off"
+                                        required 
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Senha do PCNet</label>
+                                    <input 
+                                        type="password" 
+                                        value={senha} 
+                                        onChange={(e) => setSenha(e.target.value)}
+                                        placeholder="••••••••" 
+                                        className="w-full p-3 border border-gray-300 rounded-lg text-sm bg-white"
+                                        autoComplete="new-password"
+                                        required 
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-semibold text-gray-600 uppercase mb-1">Canal do Token 2FA</label>
+                                <select 
+                                    value={tipoEmail} 
+                                    onChange={(e) => setTipoEmail(e.target.value)}
+                                    className="w-full p-3 border border-gray-300 rounded-lg text-sm bg-white"
+                                >
+                                    <option value="principal">E-mail Principal</option>
+                                    <option value="secundario">E-mail Secundário</option>
+                                </select>
+                            </div>
+                            <button 
+                                type="submit" 
+                                disabled={loading}
+                                className="w-full md:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition cursor-pointer disabled:bg-gray-400"
+                            >
+                                {loading ? 'Ligando o Robô...' : 'Conectar ao PCNet'}
+                            </button>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleValidar2FA} className="space-y-5 bg-blue-50 p-6 rounded-xl border border-blue-200" autoComplete="off">
+                            <h3 className="font-bold text-blue-900 mb-2">Verificação em Duas Etapas</h3>
+                            <div>
+                                <label className="block text-xs font-semibold text-blue-800 uppercase mb-1">Código de 6 Dígitos</label>
+                                <input 
+                                    type="text" 
+                                    maxLength="6"
+                                    value={token} 
+                                    onChange={(e) => setToken(e.target.value)}
+                                    placeholder="000000" 
+                                    className="w-full md:w-1/2 p-3 border border-blue-300 rounded-lg text-center tracking-widest text-lg font-bold bg-white"
+                                    autoComplete="off"
+                                    required 
+                                />
+                            </div>
+                            <div className="flex gap-4">
+                                <button 
+                                    type="submit" 
+                                    disabled={loading}
+                                    className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-lg transition cursor-pointer disabled:bg-gray-400"
+                                >
+                                    {loading ? 'Validando...' : 'Confirmar Token'}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={loading}
+                                    onClick={() => { setEtapa2FA(false); setToken(''); }}
+                                    className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-3 px-6 rounded-lg transition cursor-pointer disabled:opacity-50"
+                                >
+                                    Cancelar
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                </>
             )}
         </div>
     );
