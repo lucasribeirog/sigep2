@@ -1,6 +1,6 @@
 const { iniciarLoginPCNet, confirmarToken2FA, acessarAceiteRequisicoes,
-     obterCsvRequisicoes, movimentarFav, movimentarFavsLote, encerrarSessao, 
-    verificarStatusPCNet } = require('../services/pcnetService');
+     obterCsvRequisicoes, movimentarFavExamePericial, movimentarFavsLote, encerrarSessao, 
+    verificarStatusPCNet, criarFavAmostra } = require('../services/pcnetService');
 const fs = require('fs');
 
 async function solicitarLogin(req, res) {
@@ -64,7 +64,7 @@ async function exportarCsv(req, res) {
         console.log(`Iniciando exportação de CSV para o CPF: ${cpf}...`);
         
         // Pega o caminho do arquivo baixado pelo service
-        const caminhoArquivo = await obterCsvRequisicoes(cpf, codigoUnidade || 'C0053');
+        const caminhoArquivo = await obterCsvRequisicoes(cpf, codigoUnidade || 'C02977');
 
         // Envia o arquivo para o cliente e define o callback de limpeza
         return res.download(caminhoArquivo, (err) => {
@@ -104,9 +104,9 @@ async function movimentarFavRoute(req, res) {
         console.log(`Iniciando movimentação da FAV ${numeroFav} para o CPF: ${cpf}...`);
         
         // Chama a função do service que criamos
-        const resultado = await movimentarFav(
+        const resultado = await movimentarFavExamePericial(
             cpf, 
-            codigoUnidade || 'C0053', 
+            codigoUnidade || 'C02977', 
             numeroFav, 
             novoLacre
         );
@@ -187,5 +187,23 @@ async function checarStatusPcnet(req, res) {
     }
 }
 
+async function iniciarCriacaoFavAmostra(req, res) {
+    try {
+        const { cpf, numeroLaudo, favOriginal, numeroLacre, codigoUnidade } = req.body;
+
+        if (!cpf || !numeroLaudo || !favOriginal || !numeroLacre) {
+            return res.status(400).json({ erro: 'CPF, Número do Laudo, FAV Original e Número do Lacre são obrigatórios.' });
+        }
+
+        // Chama o robô passando todos os parâmetros corretamente!
+        const resultado = await criarFavAmostra(cpf, numeroLaudo, favOriginal, numeroLacre, codigoUnidade);
+        res.json(resultado);
+
+    } catch (err) {
+        res.status(500).json({ erro: err.message });
+    }
+}
+
 module.exports = { solicitarLogin, enviarToken, acessarRequisicoes, 
-    exportarCsv, movimentarFavRoute, processarMovimentacaoLote, logout, checarStatusPcnet};
+    exportarCsv, movimentarFavRoute, processarMovimentacaoLote, logout, checarStatusPcnet,
+    iniciarCriacaoFavAmostra};

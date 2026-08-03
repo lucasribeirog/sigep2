@@ -156,7 +156,7 @@ export default function GeradorLaudo({ especieInicial = '', dadosIniciaisIA = nu
 
         setCarregandoFav(true);
         try {
-            await api.post('/pcnet/movimentar-fav', {
+            await api.post('/pcnet/movimentar-fav-examePericial', {
                 numeroFav: numeroFav,
                 novoLacre: novoLacreFav || null,
                 cpf: cpfPerito

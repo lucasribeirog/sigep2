@@ -16,12 +16,15 @@ router.post('/acessar-requisicoes', pcnetController.acessarRequisicoes)
 
 router.post('/exportar-csv', pcnetController.exportarCsv)
 
-router.post('/movimentar-fav', pcnetController.movimentarFavRoute)
+router.post('/movimentar-fav-examePericial-examePericial', pcnetController.movimentarFavRoute)
 
-router.post('/movimentar-favs-lote', pcnetController.processarMovimentacaoLote)
+router.post('/movimentar-fav-examePericials-lote', pcnetController.processarMovimentacaoLote)
+
+router.post('/criar-fav', pcnetController.iniciarCriacaoFavAmostra);
 
 //Rota : Status
 router.post('/status', pcnetController.checarStatusPcnet);
+
 
 
 module.exports = router;

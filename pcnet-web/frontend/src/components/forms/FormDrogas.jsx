@@ -13,8 +13,7 @@ export default function FormDrogas({ dados, onChange }) {
         envelope_encaminhamento = '',
         massa_amostra = '',
         fav_amostra = '',
-        envelope_amostra = '',
-        envelope_restante = ''
+        envelope_amostra = ''
     } = dados;
 
     const isCocaina = droga === 'cocaina';
@@ -284,8 +283,8 @@ export default function FormDrogas({ dados, onChange }) {
                         <label className="block text-sm font-semibold text-orange-900 mb-1">Envelope do Restante (Guarda) *</label>
                         <input
                             type="text"
-                            name="envelope_restante"
-                            value={envelope_restante}
+                            name="envelope_encaminhamento"
+                            value={envelope_encaminhamento}
                             onChange={onChange}
                             placeholder="Nº Lacre do material remanescente"
                             className="w-full border border-orange-200 rounded p-2 bg-white focus:ring-2 focus:ring-orange-500 outline-none"
