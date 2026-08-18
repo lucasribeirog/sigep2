@@ -1,0 +1,29 @@
+{
+  "name": "nexus-laudos-backend",
+  "version": "5.0.0-template-flex",
+  "description": "Backend do Nexus Laudos V15 com analisador de templates, formulários flexíveis, catálogo administrativo e mesclagem do DOCX-base do PCNet.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
+  },
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@google/genai": "^2.13.0",
+    "@xmldom/xmldom": "^0.9.10",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "docxtemplater": "^3.69.3",
+    "docxtemplater-image-module-free": "^1.1.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "image-size": "^2.0.2",
+    "multer": "^2.2.0",
+    "pizzip": "^3.2.0",
+    "sharp": "^0.35.3",
+    "sqlite3": "^6.0.1",
+    "swagger-ui-express": "^5.0.1"
+  }
+}

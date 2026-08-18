@@ -1,0 +1,70 @@
+ANALISE DOS TRES TEMPLATES REAIS - NEXUS V15
+=============================================
+
+1. BALISTICA
+------------
+Estrutura identificada:
+- imagem opcional do vestigio;
+- blocos independentes para carabina, revolver, pistola, fuzil, municao isolada e arma livre/coringa;
+- bloco opcional para armamento pertencente a instituicao;
+- resultados: eficiente, ineficiente, nao calcou, rajada, municao eficiente e municao ineficiente;
+- encaminhamento para custodia ou consumo das municoes.
+
+Gaps corrigidos na logica:
+- o template possui detalhes_fuzil e agora o formulario possui campo especifico;
+- empunhadura_revolver so e exigida para revolver;
+- detalhes_armacao/carregador_info so sao exigidos para pistola;
+- "nao calcou" so pode ser usado com pistola;
+- "rajada" nao e oferecida/aceita para revolver;
+- o texto fixo "nesta STBIAM/STRC" do caso "nao calcou" foi generalizado para "nesta unidade pericial", permitindo uso por outras unidades;
+- defeito_constatado so e exigido para arma ineficiente;
+- lotes de municao sao validados individualmente;
+- lacre passou a ser realmente opcional no texto final.
+
+2. DROGAS
+---------
+Estrutura identificada:
+- cocaina ou maconha;
+- singular/plural por numero de involucros;
+- envelope de recebimento opcional;
+- resultado positivo, negativo ou inconclusivo;
+- encaminhamento fragmentado ou unificado;
+- FAV principal e FAV da amostra em cenarios distintos.
+
+Gaps corrigidos:
+- a frase "de coloracao" agora e condicional. Para maconha a cor pode ser omitida sem gerar "de coloracao ,";
+- para cocaina a cor/aspecto continua obrigatoria;
+- FAV principal e extraida do DOCX-base do PCNet quando possivel e existe fallback manual;
+- fluxo fragmentado exige massa/FAV/lacre da amostra e lacre do restante;
+- fluxo unificado exige envelope de encaminhamento/guarda;
+- resultado passou a ser validado explicitamente.
+
+3. PATRIMONIO / EFICIENCIA DE OBJETO
+------------------------------------
+Estrutura identificada:
+- faca, canivete, madeira e objeto livre;
+- conclusao eficiente/ineficiente;
+- encaminhamento com FAV, unidade de custodia e lacre.
+
+Gaps corrigidos:
+- madeira usa as tres dimensoes que existem no template: duas dimensoes da secao e comprimento total, alem da massa;
+- unidade de custodia usa o catalogo institucional do Nexus;
+- FAV usa extracao automatica do DOCX-base com fallback manual;
+- campos obrigatorios agora dependem do tipo do objeto;
+- lacre passou a ser realmente opcional no texto final.
+
+4. FLEXIBILIDADE PARA NOVOS TEMPLATES
+-------------------------------------
+- O Nexus analisa automaticamente placeholders, condicoes e imagens dinamicas do DOCX.
+- Campos simples novos viram inputs genericos sem alterar o backend.
+- Condicoes novas viram checkboxes genericos sem alterar o backend.
+- Imagens dinamicas novas sao detectadas e bloqueadas ate existir uma implementacao especifica, evitando gerar documento silenciosamente quebrado.
+- Erros de abertura/fechamento de secoes tornam o template invalido.
+- Numeracao, graficos, comentarios e placeholders fora do corpo principal geram avisos de compatibilidade.
+- Cada template recebe manifesto, avisos, status e hash SHA-256 no banco.
+- Versionamento continua ativo; restaurar uma versao tambem reexecuta a analise.
+- A mesclagem importa relacionamentos usados, tipos de conteudo e estilos adicionais do template, preservando melhor a formatacao ao juntar com o DOCX-base.
+
+5. REGRA DE SEGURANCA NA MIGRACAO
+---------------------------------
+A V15 so atualiza automaticamente um dos tres templates antigos quando o hash do arquivo ativo e EXATAMENTE igual ao modelo original fornecido. Qualquer template personalizado pelo administrador e preservado sem sobrescrita.

@@ -1,0 +1,23 @@
+NEXUS V15 - VALIDACAO
+=====================
+
+Validacoes executadas no pacote-fonte final:
+
+[OK] 17/17 testes automatizados do backend.
+[OK] 21 arquivos JavaScript do backend aprovados por node --check.
+[OK] processa_escala.py aprovado por python -m py_compile.
+[OK] 12 arquivos JS/JSX do frontend analisados pelo parser TypeScript, 0 erros de sintaxe.
+[OK] Imports relativos do frontend conferidos.
+[OK] npm ci --dry-run --ignore-scripts no backend.
+[OK] npm ci --dry-run --ignore-scripts no frontend.
+[OK] Estrutura Docxtemplater dos tres modelos revisados: secoes balanceadas.
+[OK] Balistica revisada: 99 ocorrencias de tags / 57 tags unicas.
+[OK] Drogas revisada: 50 ocorrencias de tags / 30 tags unicas.
+[OK] Patrimonio revisado: 44 ocorrencias de tags / 36 tags unicas.
+[OK] Os tres DOCX ajustados foram renderizados pelo fluxo de QA e todas as 10 paginas foram inspecionadas visualmente sem clipping, sobreposicao ou quebra de layout.
+[OK] Nenhuma dependencia de Puppeteer/Playwright/Selenium foi reintroduzida.
+
+Observacao:
+O build completo do frontend nao foi executado neste ambiente porque a instalacao integral de pacotes npm ficou indisponivel/instavel. A sintaxe JSX, os imports e os manifests npm foram validados; o SETUP.ps1 executa npm ci + npm run build na maquina Windows de destino e interrompe caso haja falha.
+
+A validacao end-to-end da MESCLAGEM com um DOCX real exportado pelo PCNet ainda depende de um arquivo-base real desse sistema, que nao foi fornecido neste lote. Os templates em si foram renderizados e verificados.

@@ -1,0 +1,99 @@
+NEXUS V15 - LAUDOS PERICIAIS / TEMPLATES FLEXIVEIS
+==================================================
+
+1. OBJETIVO
+-----------
+A V15 mantém o Nexus focado na geração de laudos e torna a relação entre formulário e template DOCX muito mais flexível.
+
+O fluxo permanece:
+1) exporte o DOCX-base no PCNet;
+2) selecione esse arquivo no Nexus;
+3) selecione uma espécie ativa com template válido;
+4) preencha o formulário;
+5) o Nexus preenche o template e o junta ao DOCX-base a partir de HISTÓRICO;
+6) baixe DOCX ou PDF.
+
+Não existe automação de login no PCNet, Seg.ID, CAPTCHA ou movimentação de FAV.
+
+2. ANALISADOR DE TEMPLATE
+-------------------------
+Ao enviar um template em Administração > Espécies e templates, o Nexus analisa o DOCX e registra um manifesto contendo:
+- variáveis simples {campo};
+- condições {#condicao}, {^condicao} e fechamentos;
+- imagens dinâmicas {%imagem};
+- erros de estrutura das condições;
+- campos e condições extras que não pertencem ao formulário-padrão;
+- recursos que merecem conferência, como numeração, gráficos e comentários;
+- hash SHA-256 do arquivo.
+
+Templates estruturalmente inválidos são rejeitados. Templates com recursos que exigem atenção podem ser cadastrados, mas ficam marcados como ATENÇÃO.
+
+Campos simples e condições extras detectados no DOCX são apresentados automaticamente no formulário como campos genéricos. Imagens dinâmicas personalizadas continuam exigindo configuração específica.
+
+3. TEMPLATES REAIS AJUSTADOS
+----------------------------
+A pasta backend/templates_padrao contém versões revisadas dos três modelos fornecidos:
+- balistica.docx
+- drogas.docx
+- eficiencia_objeto.docx
+
+Ajustes mínimos foram feitos apenas onde a lógica do formulário precisava permitir ausência legítima de informação:
+- Balística: bloco condicional para lacre opcional no encaminhamento.
+- Drogas: trecho "de coloração" só aparece quando há cor/aspecto informado.
+- Patrimônio/Eficiência: bloco condicional para lacre opcional no encaminhamento.
+
+4. FORMULÁRIOS
+--------------
+Balística:
+- tipo e resultado são validados em conjunto;
+- "não calçou" só é compatível com pistola e o texto usa "unidade pericial" em vez de uma sigla fixa;
+- "rajada" não é compatível com revólver;
+- fuzil possui campo próprio de detalhes;
+- campos específicos de revólver, pistola, carabina, fuzil e munição são validados pelo backend;
+- lacre é opcional.
+
+Drogas:
+- cocaína exige cor/aspecto; maconha pode omitir;
+- FAV principal é extraída do DOCX-base quando possível e pode ser digitada como fallback;
+- encaminhamento unificado exige o envelope de encaminhamento/guarda;
+- encaminhamento fragmentado exige FAV e massa da amostra, lacre da amostra e lacre do restante.
+
+Patrimônio/Eficiência:
+- madeira usa seção, duas dimensões da seção, comprimento total e massa;
+- unidade de custódia vem do catálogo administrativo;
+- FAV é extraída do DOCX-base quando possível e pode ser informada manualmente;
+- lacre é opcional.
+
+5. MESCLAGEM COM O DOCX DO PCNET
+--------------------------------
+O conteúdo do DOCX-base anterior a HISTÓRICO é preservado. A parte técnica do template preenchido substitui o conteúdo a partir de HISTÓRICO.
+
+A V15 também importa relacionamentos usados pelo corpo do template, tipos de conteúdo e estilos que não existam no documento-base. Isso reduz perda de formatação em templates personalizados.
+
+Se HISTÓRICO não for encontrado, o template é anexado ao final e o Nexus avisa para conferência.
+
+6. ATUALIZAÇÃO A PARTIR DA V14
+------------------------------
+Copie apenas:
+  .env
+  backend/database.sqlite
+
+para a pasta V15 e execute:
+  .\SETUP.ps1
+
+O setup cria backup do banco antes da migração.
+
+Templates personalizados não são substituídos automaticamente. A atualização automática só ocorre quando o hash do template ativo é exatamente igual ao modelo original fornecido e conhecido pela V15; a versão anterior permanece no histórico.
+
+7. EXECUÇÃO
+-----------
+Terminal 1:
+  cd backend
+  npm run dev
+
+Terminal 2:
+  cd frontend
+  npm run dev
+
+Abra:
+  http://localhost:5173
