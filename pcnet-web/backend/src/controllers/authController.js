@@ -15,4 +15,110 @@ async function listarUsuarios(_req,res){try{await db.ready;const rows=await all(
 async function criarUsuario(req,res){const{nome,email,masp,senha,role='usuario'}=req.body||{};if(!nome||!email||!masp||!senha)return res.status(400).json({erro:'Preencha todos os campos obrigatórios.'});if(!['admin','usuario'].includes(role))return res.status(400).json({erro:'Perfil de usuário inválido.'});if(String(senha).length<8)return res.status(400).json({erro:'A senha deve possuir pelo menos 8 caracteres.'});try{const unidade=await resolverUnidade(req.body,true);if(!unidade)return res.status(400).json({erro:'Selecione uma unidade ativa cadastrada no Nexus.'});const hash=await bcrypt.hash(String(senha),10);const r=await run(`INSERT INTO usuarios (nome,email,senha,masp,unidade,unidade_id,role,ativo,criado_em,atualizado_em) VALUES (?,?,?,?,?,?,?,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)`,[String(nome).trim(),normalizarEmail(email),hash,String(masp).trim(),unidade.nome,unidade.id,role]);return res.status(201).json({mensagem:'Usuário criado com sucesso.',id:r.lastID});}catch(err){if(String(err.message).includes('UNIQUE'))return res.status(409).json({erro:'Já existe uma conta com este e-mail.'});console.error(err);return res.status(500).json({erro:'Erro ao criar usuário.'});}}
 async function atualizarUsuario(req,res){const id=Number(req.params.id),atual=await get('SELECT * FROM usuarios WHERE id=?',[id]);if(!atual)return res.status(404).json({erro:'Usuário não encontrado.'});const b=req.body||{},role=b.role??atual.role,ativo=b.ativo===undefined?atual.ativo:(b.ativo?1:0);if(!['admin','usuario'].includes(role))return res.status(400).json({erro:'Perfil de usuário inválido.'});if(id===req.usuario.id&&(!ativo||role!=='admin'))return res.status(400).json({erro:'Você não pode desativar ou remover seu próprio perfil de administrador.'});if(atual.role==='admin'&&(role!=='admin'||!ativo)){const admins=await get("SELECT COUNT(*) AS n FROM usuarios WHERE role='admin' AND ativo=1");if((admins?.n||0)<=1)return res.status(400).json({erro:'O sistema precisa manter pelo menos um administrador ativo.'});}const nome=String(b.nome??atual.nome).trim(),email=normalizarEmail(b.email??atual.email),masp=String(b.masp??atual.masp).trim();if(!nome||!email||!masp)return res.status(400).json({erro:'Nome, e-mail e MASP são obrigatórios.'});try{const unidade=await resolverUnidade({unidadeId:b.unidadeId??b.unidade_id??atual.unidade_id,unidade:b.unidade??atual.unidade},true);if(!unidade)return res.status(400).json({erro:'Selecione uma unidade ativa cadastrada no Nexus.'});await run(`UPDATE usuarios SET nome=?,email=?,masp=?,unidade=?,unidade_id=?,role=?,ativo=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?`,[nome,email,masp,unidade.nome,unidade.id,role,ativo,id]);if(!ativo)await run('DELETE FROM auth_sessions WHERE usuario_id=?',[id]);return res.json({mensagem:'Usuário atualizado com sucesso.'});}catch(err){if(String(err.message).includes('UNIQUE'))return res.status(409).json({erro:'Já existe uma conta com este e-mail.'});console.error(err);return res.status(500).json({erro:'Erro ao atualizar usuário.'});}}
 async function redefinirSenha(req,res){const id=Number(req.params.id),senha=String(req.body?.senha||'');if(senha.length<8)return res.status(400).json({erro:'A nova senha deve possuir pelo menos 8 caracteres.'});const u=await get('SELECT id FROM usuarios WHERE id=?',[id]);if(!u)return res.status(404).json({erro:'Usuário não encontrado.'});const hash=await bcrypt.hash(senha,10);await run('UPDATE usuarios SET senha=?,atualizado_em=CURRENT_TIMESTAMP WHERE id=?',[hash,id]);if(id!==req.usuario.id)await run('DELETE FROM auth_sessions WHERE usuario_id=?',[id]);return res.json({mensagem:'Senha redefinida com sucesso.'});}
-module.exports={listarUnidadesPublicas,bootstrapStatus,registrar,login,sessaoAtual,logout,listarUsuarios,criarUsuario,atualizarUsuario,redefinirSenha};
+async function alterarMinhaSenha(req, res) {
+    const usuarioId = Number(req.usuario?.id || 0);
+
+    const senhaAtual = String(
+        req.body?.senhaAtual || ''
+    );
+
+    const novaSenha = String(
+        req.body?.novaSenha || ''
+    );
+
+    if (!senhaAtual || !novaSenha) {
+        return res.status(400).json({
+            erro: 'Informe a senha atual e a nova senha.'
+        });
+    }
+
+    if (novaSenha.length < 8) {
+        return res.status(400).json({
+            erro: 'A nova senha deve possuir pelo menos 8 caracteres.'
+        });
+    }
+
+    try {
+        await db.ready;
+
+        const usuario = await get(
+            `SELECT id, senha
+             FROM usuarios
+             WHERE id = ?
+               AND ativo = 1`,
+            [usuarioId]
+        );
+
+        if (!usuario) {
+            return res.status(404).json({
+                erro: 'Usuário não encontrado.'
+            });
+        }
+
+        const senhaAtualCorreta =
+            await bcrypt.compare(
+                senhaAtual,
+                usuario.senha
+            );
+
+        if (!senhaAtualCorreta) {
+            return res.status(401).json({
+                erro: 'A senha atual está incorreta.'
+            });
+        }
+
+        const mesmaSenha =
+            await bcrypt.compare(
+                novaSenha,
+                usuario.senha
+            );
+
+        if (mesmaSenha) {
+            return res.status(400).json({
+                erro: 'A nova senha deve ser diferente da senha atual.'
+            });
+        }
+
+        const novoHash =
+            await bcrypt.hash(
+                novaSenha,
+                10
+            );
+
+        await run(
+            `UPDATE usuarios
+             SET senha = ?,
+                 atualizado_em = CURRENT_TIMESTAMP
+             WHERE id = ?`,
+            [
+                novoHash,
+                usuarioId
+            ]
+        );
+
+        const tokenAtual =
+            authSessionService.getTokenFromRequest(req);
+
+        await authSessionService.deleteOtherSessions(
+            usuarioId,
+            tokenAtual
+        );
+
+        return res.json({
+            sucesso: true,
+            mensagem: 'Senha alterada com sucesso.'
+        });
+
+    } catch (err) {
+        console.error(
+            'Erro ao alterar a própria senha:',
+            err
+        );
+
+        return res.status(500).json({
+            erro: 'Erro interno ao alterar a senha.'
+        });
+    }
+}
+
+module.exports={listarUnidadesPublicas,bootstrapStatus,registrar,login,sessaoAtual,logout,listarUsuarios,criarUsuario,atualizarUsuario,redefinirSenha,alterarMinhaSenha};

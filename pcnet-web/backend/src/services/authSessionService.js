@@ -91,6 +91,28 @@ async function deleteSession(token) {
     await dbRun('DELETE FROM auth_sessions WHERE token_hash = ?', [hashToken(token)]);
 }
 
+async function deleteOtherSessions(usuarioId, currentToken) {
+    if (!usuarioId) return;
+
+    if (!currentToken) {
+        await dbRun(
+            'DELETE FROM auth_sessions WHERE usuario_id = ?',
+            [usuarioId]
+        );
+        return;
+    }
+
+    await dbRun(
+        `DELETE FROM auth_sessions
+         WHERE usuario_id = ?
+           AND token_hash <> ?`,
+        [
+            usuarioId,
+            hashToken(currentToken)
+        ]
+    );
+}
+
 async function getAuthenticatedUser(token) {
     if (!token) return null;
 
@@ -134,6 +156,7 @@ module.exports = {
     clearCookieOptions,
     createSession,
     deleteSession,
+    deleteOtherSessions,
     getAuthenticatedUser,
     cleanupExpiredSessions
 };
