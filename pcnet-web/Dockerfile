@@ -33,13 +33,12 @@ RUN apt-get update && \
 
 COPY backend/package*.json ./
 
-# Instala normalmente e depois recompila o sqlite3
-# dentro do Debian Bookworm, evitando incompatibilidade
-# do binário prebuilt com a versão da GLIBC.
-RUN npm ci --omit=dev && \
-    npm rebuild sqlite3 --build-from-source
+# Dependencias de producao do backend.
+# O banco agora utiliza PostgreSQL via pacote pg.
+RUN npm ci --omit=dev
 
 COPY backend/ ./
+
 
 # ============================================================
 # NEXUS RUNTIME
@@ -70,6 +69,18 @@ COPY --from=backend-build \
 COPY --from=frontend-build \
     /app/frontend/dist \
     ./frontend/dist
+
+
+# ============================================================
+# VALIDACAO DAS DEPENDENCIAS
+# ============================================================
+
+RUN node -e "require('./backend/node_modules/pg'); console.log('pg OK')"
+
+
+# ============================================================
+# ENVIRONMENT
+# ============================================================
 
 ENV NODE_ENV=production
 ENV PYTHON_BIN=python3

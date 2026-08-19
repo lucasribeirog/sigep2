@@ -2,7 +2,7 @@ const db = require('../config/database');
 const { FORMULARIOS, capacidadeFormulario } = require('../services/formDefinitions');
 const { analisarTemplate } = require('../services/templateAnalyzer');
 
-const { get, all, run } = db.promises;
+const { get, all, run, transaction } = db.promises;
 
 function texto(v) { return String(v ?? '').trim(); }
 function bool(v) { return v === true || v === 1 || v === '1' || v === 'true'; }
@@ -167,29 +167,41 @@ async function salvarTemplate(req, res) {
   const nomeArquivo = texto(req.file.originalname) || 'template.docx';
   const s = serializarDiagnostico(diagnostico);
   try {
-    await run('BEGIN IMMEDIATE');
-    const max = await get('SELECT COALESCE(MAX(versao),0) AS v FROM template_versoes WHERE especie_id=?', [especieId]);
-    const versao = (max?.v || 0) + 1;
-    await run(`INSERT INTO template_versoes
-      (especie_id,versao,nome_arquivo,arquivo,usuario_id,manifesto_json,avisos_json,hash_sha256,status_template)
-      VALUES (?,?,?,?,?,?,?,?,?)`, [especieId, versao, nomeArquivo, arquivo, req.usuario.id, s.manifesto, s.avisos, s.hash, s.status]);
-    await run(`INSERT INTO templates_especies
-      (especie_id,nome_arquivo,arquivo,versao,atualizado_em,atualizado_por,manifesto_json,avisos_json,hash_sha256,status_template,analisado_em)
-      VALUES (?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,CURRENT_TIMESTAMP)
-      ON CONFLICT(especie_id) DO UPDATE SET
-        nome_arquivo=excluded.nome_arquivo,arquivo=excluded.arquivo,versao=excluded.versao,
-        atualizado_em=CURRENT_TIMESTAMP,atualizado_por=excluded.atualizado_por,
-        manifesto_json=excluded.manifesto_json,avisos_json=excluded.avisos_json,
-        hash_sha256=excluded.hash_sha256,status_template=excluded.status_template,analisado_em=CURRENT_TIMESTAMP`,
-      [especieId, nomeArquivo, arquivo, versao, req.usuario.id, s.manifesto, s.avisos, s.hash, s.status]);
-    await run('COMMIT');
+    const versao = await transaction(async (tx) => {
+      // Mantém o cálculo de versão e a gravação do template na mesma conexão
+      // PostgreSQL. O LOCK evita duas versões iguais em uploads simultâneos.
+      await tx.run('LOCK TABLE template_versoes IN SHARE ROW EXCLUSIVE MODE');
+
+      const max = await tx.get(
+        'SELECT COALESCE(MAX(versao),0) AS v FROM template_versoes WHERE especie_id=?',
+        [especieId]
+      );
+      const novaVersao = (max?.v || 0) + 1;
+
+      await tx.run(`INSERT INTO template_versoes
+        (especie_id,versao,nome_arquivo,arquivo,usuario_id,manifesto_json,avisos_json,hash_sha256,status_template)
+        VALUES (?,?,?,?,?,?,?,?,?)`,
+        [especieId, novaVersao, nomeArquivo, arquivo, req.usuario.id, s.manifesto, s.avisos, s.hash, s.status]);
+
+      await tx.run(`INSERT INTO templates_especies
+        (especie_id,nome_arquivo,arquivo,versao,atualizado_em,atualizado_por,manifesto_json,avisos_json,hash_sha256,status_template,analisado_em)
+        VALUES (?,?,?,?,CURRENT_TIMESTAMP,?,?,?,?,?,CURRENT_TIMESTAMP)
+        ON CONFLICT(especie_id) DO UPDATE SET
+          nome_arquivo=excluded.nome_arquivo,arquivo=excluded.arquivo,versao=excluded.versao,
+          atualizado_em=CURRENT_TIMESTAMP,atualizado_por=excluded.atualizado_por,
+          manifesto_json=excluded.manifesto_json,avisos_json=excluded.avisos_json,
+          hash_sha256=excluded.hash_sha256,status_template=excluded.status_template,analisado_em=CURRENT_TIMESTAMP`,
+        [especieId, nomeArquivo, arquivo, novaVersao, req.usuario.id, s.manifesto, s.avisos, s.hash, s.status]);
+
+      return novaVersao;
+    });
+
     return res.json({
       mensagem: `Template v${versao} vinculado a ${especie.nome_exibicao}.`,
       versao,
       diagnostico,
     });
   } catch (e) {
-    try { await run('ROLLBACK'); } catch { /* noop */ }
     console.error(e);
     return res.status(500).json({ erro: 'Erro ao salvar template.' });
   }

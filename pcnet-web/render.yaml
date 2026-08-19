@@ -28,5 +28,11 @@ services:
       - key: ENABLE_SWAGGER
         value: "false"
 
+      - key: DATABASE_URL
+        sync: false
+
+      - key: DB_POOL_MAX
+        value: "5"
+
       - key: GEMINI_API_KEY
         sync: false
