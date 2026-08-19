@@ -55,10 +55,62 @@ RUN apt-get update && \
         python3-opencv \
         fontconfig \
         fonts-dejavu-core \
-        fonts-liberation \
+        fonts-liberation2 \
         fonts-crosextra-carlito \
         fonts-crosextra-caladea \
     && rm -rf /var/lib/apt/lists/*
+
+# ============================================================
+# SUBSTITUICAO DE FONTES DO MICROSOFT
+# ============================================================
+
+RUN printf '%s\n' \
+'<?xml version="1.0"?>' \
+'<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">' \
+'<fontconfig>' \
+'  <alias>' \
+'    <family>Times New Roman</family>' \
+'    <prefer>' \
+'      <family>Liberation Serif</family>' \
+'    </prefer>' \
+'  </alias>' \
+'' \
+'  <alias>' \
+'    <family>Calibri</family>' \
+'    <prefer>' \
+'      <family>Carlito</family>' \
+'    </prefer>' \
+'  </alias>' \
+'' \
+'  <alias>' \
+'    <family>Arial</family>' \
+'    <prefer>' \
+'      <family>Liberation Sans</family>' \
+'    </prefer>' \
+'  </alias>' \
+'' \
+'  <alias>' \
+'    <family>Cambria</family>' \
+'    <prefer>' \
+'      <family>Caladea</family>' \
+'    </prefer>' \
+'  </alias>' \
+'</fontconfig>' \
+> /etc/fonts/local.conf && \
+fc-cache -f -v
+
+# Verificacao do mapeamento durante o build
+RUN echo "===== FONTES NEXUS =====" && \
+    fc-match "Times New Roman" && \
+    fc-match "Times New Roman:style=Bold" && \
+    fc-match "Calibri" && \
+    fc-match "Arial" && \
+    fc-match "Cambria"
+
+
+# ============================================================
+# APPLICATION
+# ============================================================
 
 WORKDIR /app
 
