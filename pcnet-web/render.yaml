@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: nexus-laudos-dev
+    runtime: docker
+    plan: free
+    region: virginia
+
+    healthCheckPath: /health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      - key: JSON_BODY_LIMIT
+        value: 1mb
+
+      - key: MAX_UPLOAD_MB
+        value: "20"
+
+      - key: AUTH_SESSION_HOURS
+        value: "8"
+
+      - key: PYTHON_BIN
+        value: python3
+
+      - key: ENABLE_SWAGGER
+        value: "false"
+
+      - key: GEMINI_API_KEY
+        sync: false
