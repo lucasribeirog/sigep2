@@ -33,13 +33,13 @@ RUN apt-get update && \
 
 COPY backend/package*.json ./
 
-# Instala normalmente e depois recompila o sqlite3
-# dentro do Debian Bookworm, evitando incompatibilidade
-# do binário prebuilt com a versão da GLIBC.
+# Compila o sqlite3 no próprio Debian Bookworm,
+# evitando incompatibilidade de GLIBC.
 RUN npm ci --omit=dev && \
     npm rebuild sqlite3 --build-from-source
 
 COPY backend/ ./
+
 
 # ============================================================
 # NEXUS RUNTIME
@@ -56,10 +56,63 @@ RUN apt-get update && \
         python3-opencv \
         fontconfig \
         fonts-dejavu-core \
-        fonts-liberation \
+        fonts-liberation2 \
         fonts-crosextra-carlito \
         fonts-crosextra-caladea \
     && rm -rf /var/lib/apt/lists/*
+
+
+# ============================================================
+# SUBSTITUICAO DE FONTES DO MICROSOFT NO LIBREOFFICE
+# ============================================================
+
+RUN printf '%s\n' \
+'<?xml version="1.0"?>' \
+'<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">' \
+'<fontconfig>' \
+'  <match target="pattern">' \
+'    <test qual="any" name="family">' \
+'      <string>Times New Roman</string>' \
+'    </test>' \
+'    <edit name="family" mode="prepend" binding="strong">' \
+'      <string>Liberation Serif</string>' \
+'    </edit>' \
+'  </match>' \
+'' \
+'  <match target="pattern">' \
+'    <test qual="any" name="family">' \
+'      <string>Calibri</string>' \
+'    </test>' \
+'    <edit name="family" mode="prepend" binding="strong">' \
+'      <string>Carlito</string>' \
+'    </edit>' \
+'  </match>' \
+'' \
+'  <match target="pattern">' \
+'    <test qual="any" name="family">' \
+'      <string>Arial</string>' \
+'    </test>' \
+'    <edit name="family" mode="prepend" binding="strong">' \
+'      <string>Liberation Sans</string>' \
+'    </edit>' \
+'  </match>' \
+'' \
+'  <match target="pattern">' \
+'    <test qual="any" name="family">' \
+'      <string>Cambria</string>' \
+'    </test>' \
+'    <edit name="family" mode="prepend" binding="strong">' \
+'      <string>Caladea</string>' \
+'    </edit>' \
+'  </match>' \
+'</fontconfig>' \
+> /etc/fonts/local.conf && \
+fc-cache -f
+
+
+# ============================================================
+# APPLICATION
+# ============================================================
 
 WORKDIR /app
 
@@ -70,6 +123,12 @@ COPY --from=backend-build \
 COPY --from=frontend-build \
     /app/frontend/dist \
     ./frontend/dist
+
+
+# Confere já durante o build que o sqlite3 funciona
+# no sistema operacional final.
+RUN node -e "require('./backend/node_modules/sqlite3'); console.log('sqlite3 OK')"
+
 
 ENV NODE_ENV=production
 ENV PYTHON_BIN=python3
