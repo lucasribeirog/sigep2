@@ -127,6 +127,30 @@ const frontendIndex = path.join(
     'index.html'
 );
 
+// ============================================================
+// PCNET BRIDGE - XPI ASSINADO
+// ============================================================
+
+app.get('/downloads/nexus-pcnet-bridge.xpi', (_req, res) => {
+    const xpiPath = path.join(
+        frontendDist,
+        'downloads',
+        'nexus-pcnet-bridge.xpi'
+    );
+
+    res.setHeader(
+        'Content-Type',
+        'application/x-xpinstall'
+    );
+
+    res.setHeader(
+        'Content-Disposition',
+        'inline; filename="nexus-pcnet-bridge.xpi"'
+    );
+
+    res.sendFile(xpiPath);
+});
+
 if (fs.existsSync(frontendIndex)) {
     app.use(
         express.static(frontendDist, {
@@ -152,7 +176,8 @@ if (fs.existsSync(frontendIndex)) {
         if (
             req.path.startsWith('/api') ||
             req.path.startsWith('/health') ||
-            req.path.startsWith('/api-docs')
+            req.path.startsWith('/api-docs') ||
+            req.path.startsWith('/downloads')
         ) {
             return next();
         }

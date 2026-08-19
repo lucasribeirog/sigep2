@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const SOURCE_APP = 'NEXUS_APP';
 const SOURCE_BRIDGE = 'NEXUS_PCNET_BRIDGE';
+const BRIDGE_XPI_URL = '/downloads/nexus-pcnet-bridge.xpi';
 
 export default function PcnetBridgeStatus() {
   const [bridge, setBridge] = useState('checking');
@@ -87,8 +88,18 @@ export default function PcnetBridgeStatus() {
 
   if (bridge === 'missing') {
     return (
-      <div className="bg-white border border-amber-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <div><div className="text-sm font-bold text-amber-800">○ PCNet Bridge indisponível</div><div className="text-[11px] text-gray-500 mt-0.5">Carregue a extensão do Firefox para habilitar as movimentações.</div></div>
+      <div className="bg-white border border-amber-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold text-amber-800">○ PCNet Bridge não instalado</div>
+          <div className="text-[11px] text-gray-500 mt-0.5">Instale a extensão oficial do Nexus para habilitar a integração com o PCNet.</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => { window.location.href = BRIDGE_XPI_URL; }}
+          className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg text-xs font-bold shrink-0"
+        >
+          Instalar PCNet Bridge
+        </button>
       </div>
     );
   }
