@@ -12,6 +12,7 @@ const swaggerDocument = require('./src/config/swagger');
 const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || '1mb' }));
+// Helper nativo: somente loopback e antes do CORS geral, pois a chamada parte da WebExtension Firefox.
 const origensPermitidas = (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',').map(v=>v.trim()).filter(Boolean);
 app.use(cors({ origin(origin, cb){ if(!origin || origensPermitidas.includes(origin)) return cb(null,true); return cb(new Error('Origem não autorizada pelo CORS.')); }, credentials:true }));
 app.get('/health', (_req,res)=>res.status(200).json({status:'ok',modulo:'laudos'}));

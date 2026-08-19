@@ -14,7 +14,9 @@ export default function FormDrogas({ dados, onChange }) {
         envelope_encaminhamento = '',
         massa_amostra = '',
         fav_amostra = '',
-        envelope_amostra = ''
+        envelope_amostra = '',
+        numero_laudo_pcnet = '',
+        numero_laudo_completo = ''
     } = dados;
 
     const isCocaina = droga === 'cocaina';
@@ -255,8 +257,26 @@ export default function FormDrogas({ dados, onChange }) {
             {isFragmentado && (
                 <div className="bg-orange-50 p-4 rounded-md border border-orange-200 space-y-4">
                     <h3 className="font-bold text-orange-900 text-sm uppercase tracking-wide">Dados da Amostra (Exame Definitivo)</h3>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <p className="text-xs text-orange-800">No fluxo integrado, a FAV da amostra é criada pelo PCNet e preenchida automaticamente pelo Nexus. O número do laudo é extraído do DOCX-base quando possível.</p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                            <label className="block text-xs font-semibold text-orange-800 mb-1">Nº do Laudo no PCNet *</label>
+                            <input
+                                type="text"
+                                name="numero_laudo_pcnet"
+                                value={numero_laudo_pcnet}
+                                onChange={onChange}
+                                placeholder="Extraído do DOCX; confirme ou informe manualmente"
+                                className="w-full border border-orange-200 rounded p-2 bg-white focus:ring-2 focus:ring-orange-500 outline-none"
+                                required={isFragmentado}
+                            />
+                            {numero_laudo_completo && numero_laudo_completo !== numero_laudo_pcnet && (
+                                <p className="mt-1 text-[11px] text-orange-700">
+                                    Identificador completo no DOCX: {numero_laudo_completo}. A pesquisa do PCNet usa apenas {numero_laudo_pcnet}.
+                                </p>
+                            )}
+                        </div>
                         <div>
                             <label className="block text-xs font-semibold text-orange-800 mb-1">FAV da Amostra *</label>
                             <input
@@ -264,11 +284,14 @@ export default function FormDrogas({ dados, onChange }) {
                                 name="fav_amostra"
                                 value={fav_amostra}
                                 onChange={onChange}
-                                placeholder="ex: 12345/2026"
-                                className="w-full border border-orange-200 rounded p-2 bg-white focus:ring-2 focus:ring-orange-500 outline-none"
+                                placeholder="Será criada/capturada pelo Bridge; preenchimento manual só como contingência"
+                                className={`w-full border border-orange-200 rounded p-2 focus:ring-2 focus:ring-orange-500 outline-none ${fav_amostra ? 'bg-emerald-50 font-semibold text-emerald-800' : 'bg-white'}`}
                                 required={isFragmentado}
                             />
                         </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                             <label className="block text-xs font-semibold text-orange-800 mb-1">Massa (g) *</label>
                             <input

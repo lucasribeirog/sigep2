@@ -46,6 +46,57 @@ function extrairFavDoDocx(buffer) {
   }
 }
 
+function extrairNumeroLaudoCompletoDoDocx(buffer) {
+  try {
+    const t = extrairTextoDocx(buffer);
+    const padroes = [
+      // Identificador completo exibido no DOCX exportado pelo PCNet, por exemplo:
+      // "Nº Laudo: 2026-487-002977-024-019179615-52".
+      /(?:N[º°o.]?\s*(?:do\s*)?Laudo|Laudo\s+Pericial\s*(?:N[º°o.]?)?)[:\s.\-–]*((?:19|20)[0-9]{2}(?:-[0-9]+){2,})/i,
+
+      // Cabeçalho técnico/barcode exportado pelo PCNet:
+      // "13752!2026-487-002977-024-019179615-52!".
+      /\b[0-9]{3,8}!\s*((?:19|20)[0-9]{2}(?:-[0-9]+){2,})!/,
+
+      // Formatos legados/locais (ex.: "Nº Laudo: 15287" ou "15287/2026").
+      /(?:N[º°o.]?\s*(?:do\s*)?Laudo|Laudo\s+(?:Pericial\s*)?(?:N[º°o.]?)?)[:\s.\-–]*([0-9]{3,8}(?:\/20[0-9]{2})?)(?!-)/i,
+      /\bLaudo\s+(?:Pericial\s*)?[-–:]?\s*([0-9]{3,8}(?:\/20[0-9]{2})?)(?!-)\b/i,
+    ];
+    for (const p of padroes) {
+      const m = t.match(p);
+      if (m?.[1]) return m[1];
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function numeroLaudoPcnetAPartirDoCompleto(numeroCompleto) {
+  const valor = String(numeroCompleto || '').trim();
+  if (!valor) return null;
+
+  // No identificador moderno do laudo, o número usado pela tela de pesquisa do
+  // PCNet é o penúltimo bloco. Exemplo:
+  // 2026-487-002977-024-019179615-52 -> 019179615.
+  const blocos = valor.split('-').map((v) => v.trim()).filter(Boolean);
+  if (blocos.length >= 3) {
+    const interno = blocos[blocos.length - 2];
+    if (/^[0-9]{6,12}$/.test(interno)) return interno;
+  }
+
+  // Formatos legados em que o número local já aparece sozinho ou como N/AAAA.
+  if (/^[0-9]{3,12}$/.test(valor)) return valor;
+  const legado = valor.match(/^([0-9]{3,12})\/(?:19|20)[0-9]{2}$/);
+  if (legado) return legado[1];
+
+  return valor;
+}
+
+function extrairNumeroLaudoDoDocx(buffer) {
+  return numeroLaudoPcnetAPartirDoCompleto(extrairNumeroLaudoCompletoDoDocx(buffer));
+}
+
 function garantirRelationships(zipBase) {
   const relPath = 'word/_rels/document.xml.rels';
   const existente = zipBase.file(relPath);
@@ -277,5 +328,8 @@ module.exports = {
   validarEstruturaDocx,
   extrairTextoDocx,
   extrairFavDoDocx,
+  extrairNumeroLaudoCompletoDoDocx,
+  numeroLaudoPcnetAPartirDoCompleto,
+  extrairNumeroLaudoDoDocx,
   mesclarDocxBaseComTemplate,
 };

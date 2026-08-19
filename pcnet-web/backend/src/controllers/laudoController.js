@@ -8,7 +8,7 @@ const sizeOf = require('image-size');
 const sharp = require('sharp');
 
 const { prepararVariaveis, analisarImagemPericial } = require('../services/laudoProcessor');
-const { extrairFavDoDocx, mesclarDocxBaseComTemplate } = require('../services/docxMergeService');
+const { extrairFavDoDocx, extrairNumeroLaudoDoDocx, extrairNumeroLaudoCompletoDoDocx, mesclarDocxBaseComTemplate } = require('../services/docxMergeService');
 const db = require('../config/database');
 const { get, all } = db.promises;
 
@@ -151,6 +151,26 @@ function headersDiagnostico(res, d) {
   if (d.templateStatus) res.setHeader('x-nexus-template-status', d.templateStatus);
 }
 
+async function inspecionarDocxPcnet(req, res) {
+  try {
+    const arquivo = req.file;
+    if (!arquivo?.buffer) return res.status(400).json({ erro: 'Selecione o documento-base .docx exportado pelo PCNet.' });
+    const numeroLaudoCompleto = extrairNumeroLaudoCompletoDoDocx(arquivo.buffer);
+    const numeroLaudoPcnet = extrairNumeroLaudoDoDocx(arquivo.buffer);
+    return res.json({
+      fav: extrairFavDoDocx(arquivo.buffer),
+      // Compatibilidade: numeroLaudo continua sendo o valor que deve ser digitado
+      // na tela de pesquisa do PCNet.
+      numeroLaudo: numeroLaudoPcnet,
+      numeroLaudoPcnet,
+      numeroLaudoCompleto,
+    });
+  } catch (e) {
+    console.error('Erro ao inspecionar DOCX PCNet:', e);
+    return res.status(400).json({ erro: e.message || 'Não foi possível inspecionar o DOCX-base.' });
+  }
+}
+
 async function gerarLaudo(req, res) {
   let fotoPath = null;
   try {
@@ -211,4 +231,4 @@ async function analisarFotoObjeto(req, res) {
   }
 }
 
-module.exports = { listarCatalogo, gerarLaudo, gerarLaudoPdf, analisarFotoObjeto };
+module.exports = { listarCatalogo, inspecionarDocxPcnet, gerarLaudo, gerarLaudoPdf, analisarFotoObjeto };

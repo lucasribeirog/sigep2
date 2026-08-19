@@ -1,0 +1,14 @@
+NEXUS PCNET BRIDGE V2.11
+Versão da extensão: 0.2.11.0
+
+COMPORTAMENTO
+- Clique em “Conectar PCNet” apenas quando a sessão não estiver autenticada.
+- Faça o login normalmente.
+- Ao detectar a autenticação, a extensão retorna ao Nexus e oculta a aba PCNet.
+- Durante as operações do Nexus, o PCNet permanece em segundo plano.
+
+
+V2.11 — ABA GERENCIADA
+- O Bridge controla e oculta somente a aba raiz criada/adotada pelo botão Conectar PCNet.
+- Abas PCNet abertas manualmente pelo usuário nunca são auto-ocultadas.
+- Operações auxiliares só consideram abas/popups descendentes da aba raiz gerenciada.

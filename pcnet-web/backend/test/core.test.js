@@ -125,6 +125,22 @@ test('geração exige DOCX-base do PCNet e mescla a partir de HISTÓRICO', () =>
   assert.match(merge, /HISTORICO/);
 });
 
+
+test('DOCX PCNet: separa identificador completo e número interno usado na pesquisa de laudo', () => {
+  const PizZip = require('pizzip');
+  const { extrairNumeroLaudoDoDocx, extrairNumeroLaudoCompletoDoDocx, numeroLaudoPcnetAPartirDoCompleto, extrairFavDoDocx } = require('../src/services/docxMergeService');
+  const zip = new PizZip();
+  zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+      <w:body><w:p><w:r><w:t>Nº Laudo: 2026-487-002977-024-019179615-52 Nº da FAV: 2261533</w:t></w:r></w:p></w:body>
+    </w:document>`);
+  const buffer = zip.generate({ type: 'nodebuffer' });
+  assert.equal(extrairNumeroLaudoCompletoDoDocx(buffer), '2026-487-002977-024-019179615-52');
+  assert.equal(extrairNumeroLaudoDoDocx(buffer), '019179615');
+  assert.equal(numeroLaudoPcnetAPartirDoCompleto('2026-487-002977-024-019179615-52'), '019179615');
+  assert.equal(extrairFavDoDocx(buffer), '2261533');
+});
+
 test('frontend oferece campos adicionais detectados no template', () => {
   const g = read('../../frontend/src/components/GeradorLaudo.jsx');
   const extras = read('../../frontend/src/components/forms/TemplateCamposExtras.jsx');
@@ -145,12 +161,56 @@ test('lacre é opcional em Balística e Patrimônio e obrigatório em Drogas', (
   assert.match(drogas, /número do envelope da amostra é obrigatório/);
 });
 
-test('Nexus continua sem automação de navegador, Seg.ID ou movimentação de FAV', () => {
+test('V17.10.1 mantém o backend sem automação nativa de teclado para o PCNet', () => {
   const p = JSON.parse(read('../package.json'));
   const deps = Object.keys(p.dependencies || {});
   assert.equal(deps.some(x => /puppeteer|playwright|selenium/i.test(x)), false);
-  const arquivos = [read('../server.js'), read('../src/routes/laudoRoutes.js'), read('../src/routes/adminRoutes.js')].join('\n');
-  assert.doesNotMatch(arquivos, /Seg\.ID|WebDriver|movimentar[-_ ]?fav/i);
+  const server = read('../server.js');
+  assert.doesNotMatch(server, /pcnetNativeRoutes/);
+  assert.equal(fs.existsSync(path.join(__dirname, '../src/routes/pcnetNativeRoutes.js')), false);
+  assert.equal(fs.existsSync(path.join(__dirname, '../src/services/pcnetNativeInputService.js')), false);
+  assert.equal(fs.existsSync(path.join(__dirname, '../src/scripts/pcnet_native_ctrl_f2.ps1')), false);
+});
+
+test('Bridge V2.11 cria FAV, automatiza CL/AC e oculta somente a aba PCNet gerenciada', () => {
+  const bg = read('../../pcnet-bridge-firefox/background.js');
+  const content = read('../../pcnet-bridge-firefox/content-pcnet.js');
+  const frontend = read('../../frontend/src/components/PcnetLaudoMovimentacao.jsx');
+  const gerador = read('../../frontend/src/components/GeradorLaudo.jsx');
+  const manifest = JSON.parse(read('../../pcnet-bridge-firefox/manifest.json'));
+  assert.equal(manifest.version, '0.2.11.0');
+  assert.ok((manifest.permissions || []).includes('scripting'));
+  assert.match(bg, /world: 'MAIN'/);
+  assert.match(bg, /acessarprocedimentolaudopericialsel\.do/);
+  assert.doesNotMatch(bg, /acessarprocedimentolaudopericiaissel\.do/);
+  assert.match(bg, /PREPARE_SAVE_COLETA/);
+  assert.match(bg, /PREPARE_SAVE_ACONDICIONAMENTO/);
+  assert.match(bg, /Registros gravados com sucesso/);
+  assert.match(bg, /unidadeUsuario/);
+  assert.match(bg, /agendarOcultacaoAposAutenticacao/);
+  assert.match(bg, /ocultarAposAutenticacao/);
+  assert.match(bg, /MANAGED_ROOT_KEY/);
+  assert.match(bg, /gerenciadaId === sender\.tab\.id/);
+  assert.match(bg, /abaRelacionadaAoContexto/);
+  assert.match(bg, /Abas PCNet abertas manualmente/);
+  assert.match(bg, /browser\.tabs\.hide/);
+  assert.match(content, /materialColetadoTerceiro1/);
+  assert.match(content, /enderecoFatoColeta/);
+  assert.match(content, /localizacao/);
+  assert.match(content, /materialAcondicionadoTerceiro1/);
+  assert.match(content, /involucroRompidoStr1/);
+  assert.match(content, /msg_confirma/);
+  assert.match(frontend, /unidadeUsuario/);
+  assert.match(frontend, /Movimentar FAV/);
+  assert.match(frontend, /Conectar PCNet/);
+  assert.doesNotMatch(frontend, />Mostrar PCNet</);
+  assert.doesNotMatch(frontend, />Ocultar PCNet</);
+  assert.match(frontend, /CRIAR_FAV_AMOSTRA/);
+  assert.match(frontend, /PREPARAR_ETAPAS_FAV/);
+  assert.match(frontend, /fluxo terminou com uma ou mais pendências/i);
+  assert.doesNotMatch(frontend, />Movimentar amostra</);
+  assert.match(gerador, /unidadeUsuario=\{usuario\?\.unidade \|\| ''\}/);
+  assert.doesNotMatch(bg, /SendInput|CTRL_F2_ENTER|criarJanelaAuxiliarPesquisaLaudo/);
 });
 
 test('junção DOCX preserva estilos adicionais do template e diagnostica recursos avançados', () => {

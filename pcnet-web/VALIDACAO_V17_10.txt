@@ -1,0 +1,18 @@
+NEXUS V17.10.1 / PCNET BRIDGE V2.11
+
+ALTERAÇÃO PRINCIPAL
+- UX reduzida a “PCNet conectado” / “PCNet não conectado”.
+- Quando desconectado, somente o botão “Conectar PCNet” é exibido.
+- Heartbeat autenticado agenda a ocultação automática da aba PCNet.
+- Se a aba PCNet estiver ativa, o Bridge ativa primeiro uma aba Nexus localhost/127.0.0.1 e então oculta o PCNet.
+- Sem aba Nexus disponível, a extensão não tenta ocultar uma aba PCNet ativa.
+
+REGRESSÕES PROTEGIDAS
+- fluxo único “Movimentar FAV”;
+- criação de FAV de amostra;
+- Coleta e Acondicionamento automáticos;
+- proteção anti-duplicidade;
+- comparação de FAV ignorando zeros à esquerda;
+- ausência de automação nativa de teclado/Win32.
+
+V2.11: correção de isolamento de abas — somente a aba PCNet gerenciada pelo Nexus pode ser auto-ocultada. Abas manuais ficam intactas.

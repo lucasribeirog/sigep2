@@ -4,6 +4,7 @@ import FormBalistica from './forms/FormBalistica';
 import FormPatrimonio from './forms/FormPatrimonio';
 import FormDrogas from './forms/FormDrogas';
 import TemplateCamposExtras from './forms/TemplateCamposExtras';
+import PcnetLaudoMovimentacao from './PcnetLaudoMovimentacao';
 
 function nomeSeguro(v) {
   return String(v || 'Laudo')
@@ -25,9 +26,10 @@ const FORM_INICIAL = {
   tipo_acao_carabina: 'repetição (não automática)', detalhes_coronha: 'coronha e telha em madeira', sistema_alimentacao: 'sistema próprio',
   empunhadura_revolver: '', carregador_info: 'acompanhada de um carregador compatível', detalhes_armacao: '', detalhes_fuzil: 'coronha rebatível e empunhadura em polímero',
   qtd_municao: '02 (dois)', nome_arma_livre: '', descricao_livre: '',
-  tipo_objeto: 'faca', resultado_eficiencia: 'eficiente', n_fav: '', unidade_custodia: '', material_cabo: '', cor_cabo: '', comp_lamina: '', largura_base: '', comp_total: '',
+  tipo_objeto: 'faca', resultado_eficiencia: 'eficiente', n_fav: '', pcnet_fav: '', unidade_custodia: '', material_cabo: '', cor_cabo: '', comp_lamina: '', largura_base: '', comp_total: '',
   tipo_abertura: '', secao_madeira: '', comp_madeira: '', larg_madeira: '', massa: '', nome_objeto: '', material_predominante: '', cor_objeto: '', compr_objeto: '', larg_objeto: '', espessura_objeto: '', massa_objeto: '',
   droga: 'cocaina', cor_material: 'branca', qtd_involucros: '', massa_liquida: '', extenso_massa: '', envelope_recebimento: '', numero_fav: '', resultado: 'positivo', tipo_encaminhamento: 'unificado', envelope_encaminhamento: '', massa_amostra: '', fav_amostra: '', envelope_amostra: '',
+  numero_laudo_pcnet: '', numero_laudo_completo: '', pcnet_movimentacoes: {}, pcnet_amostra_criada: null,
 };
 
 export default function GeradorLaudo({ catalogo = [], especieInicialId = null, dadosIniciaisIA = null, fotoObjetoInicial = null, usuario = null }) {
@@ -60,11 +62,40 @@ export default function GeradorLaudo({ catalogo = [], especieInicialId = null, d
     setForm(v => ({ ...v, [name]: finalValue }));
   };
 
-  function escolherPcnet(file) {
+  async function escolherPcnet(file) {
     setAviso('');
     if (!file) return setArquivoPcnet(null);
     if (!/\.docx$/i.test(file.name || '')) { setArquivoPcnet(null); return alert('Selecione o arquivo .docx exportado pelo PCNet.'); }
     setArquivoPcnet(file);
+
+    // Inspeciona apenas os metadados úteis do DOCX-base. A geração do laudo continua
+    // usando o arquivo original sem qualquer alteração.
+    try {
+      const fd = new FormData();
+      fd.append('arquivo_pcnet', file);
+      const r = await api.post('/inspecionar-docx', fd);
+      const fav = String(r.data?.fav || '').trim();
+      const numeroLaudoPcnet = String(r.data?.numeroLaudoPcnet || r.data?.numeroLaudo || '').trim();
+      const numeroLaudoCompleto = String(r.data?.numeroLaudoCompleto || '').trim();
+      setForm(v => ({
+        ...v,
+        numero_laudo_pcnet: numeroLaudoPcnet || v.numero_laudo_pcnet || '',
+        numero_laudo_completo: numeroLaudoCompleto || v.numero_laudo_completo || '',
+        numero_fav: fav || v.numero_fav || '',
+        n_fav: fav || v.n_fav || '',
+        pcnet_fav: fav || v.pcnet_fav || '',
+      }));
+      if (fav || numeroLaudoPcnet || numeroLaudoCompleto) {
+        const itens = [];
+        if (fav) itens.push(`FAV ${fav}`);
+        if (numeroLaudoPcnet) itens.push(`Laudo PCNet ${numeroLaudoPcnet}`);
+        if (numeroLaudoCompleto && numeroLaudoCompleto !== numeroLaudoPcnet) itens.push(`identificador completo ${numeroLaudoCompleto}`);
+        setAviso(`DOCX-base identificado: ${itens.join(' · ')}.`);
+      }
+    } catch (e) {
+      // Não impede a elaboração: número do laudo/FAV continuam editáveis no formulário.
+      console.warn('Nexus: não foi possível extrair metadados do DOCX-base:', e?.response?.data?.erro || e?.message || e);
+    }
   }
 
   async function analisarFoto() {
@@ -157,6 +188,8 @@ export default function GeradorLaudo({ catalogo = [], especieInicialId = null, d
       {especie?.formulario === 'balistica' && <FormBalistica form={form} onChange={change} />}
       {especie?.formulario === 'eficiencia_objeto' && <FormPatrimonio form={form} onChange={change} unidades={unidades} unidadePadrao={usuario?.unidade || ''} />}
       {especie?.formulario === 'drogas' && <FormDrogas dados={form} onChange={change} />}
+
+      {especie && ['balistica', 'eficiencia_objeto', 'drogas'].includes(especie.formulario) && <PcnetLaudoMovimentacao formulario={especie.formulario} form={form} onChange={change} unidadeUsuario={usuario?.unidade || ''} />}
 
       <TemplateCamposExtras manifesto={manifesto} form={form} onChange={change} />
 

@@ -1,14 +1,3 @@
-NEXUS V15 - TEMPLATES FLEXIVEIS E FORMULARIOS COERENTES
-
-Principais mudanças:
-- Os três templates reais enviados (Balística, Drogas e Patrimônio/Eficiência) foram analisados e incorporados como modelos-padrão revisados.
-- Analisador automático de templates DOCX: identifica placeholders, condições, imagens dinâmicas, erros de estrutura, campos extras e compatibilidade com o formulário escolhido.
-- Campos simples e condições novas do template podem aparecer automaticamente no formulário sem alteração de backend.
-- Diagnóstico do template disponível no painel administrativo, com hash SHA-256, avisos e manifesto de variáveis.
-- Mesclagem DOCX preserva relacionamentos usados, tipos de conteúdo e estilos adicionais do template antes de inserir o corpo técnico no documento-base do PCNet.
-- Balística: lógica por tipo de arma/munição, campos de fuzil, resultado "não calçou" apenas para pistola, "rajada" incompatível com revólver, texto de unidade generalizado, defeito apenas quando aplicável e lacre opcional.
-- Drogas: cor/aspecto obrigatório para cocaína e opcional para maconha; FAV extraída do DOCX-base com fallback manual; validações de encaminhamento fragmentado/unificado coerentes com o template.
-- Patrimônio/Eficiência: madeira passa a usar as três dimensões previstas no template; unidade de custódia vem do catálogo; FAV usa extração automática com fallback manual; lacre opcional.
-- O upload de templates mantém versionamento e não sobrescreve templates personalizados do usuário.
-- Se o banco contiver exatamente uma das três versões originais enviadas, a V15 cria nova versão com a correção correspondente e preserva a anterior no histórico.
-- Continua sem automação do PCNet, Seg.ID, CAPTCHA ou movimentação de FAV. O PCNet participa apenas fornecendo o DOCX-base exportado manualmente.
+NEXUS V17.10.1
+PCNET BRIDGE V2.11 (0.2.11.0)
+UX PCNet: estado compacto Conectado/Não conectado. Somente a aba PCNet gerenciada pelo Nexus é ocultada; abas PCNet abertas manualmente permanecem visíveis.

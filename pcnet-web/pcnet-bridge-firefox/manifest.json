@@ -1,0 +1,55 @@
+{
+  "manifest_version": 3,
+  "name": "Nexus PCNet Bridge",
+  "version": "0.2.11.0",
+  "description": "Bridge local do Nexus: mantém somente a aba PCNet gerenciada pelo Nexus oculta após autenticação; abas PCNet abertas manualmente permanecem livres.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "nexus-pcnet-bridge@local",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": [
+    "tabs",
+    "tabHide",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://*.pcnet.mg.gov.br/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "action": {
+    "default_title": "Nexus PCNet Bridge",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.pcnet.mg.gov.br/*"
+      ],
+      "js": [
+        "content-pcnet.js"
+      ],
+      "all_frames": true,
+      "match_about_blank": true,
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "content-nexus.js"
+      ],
+      "run_at": "document_start"
+    }
+  ]
+}

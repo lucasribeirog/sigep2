@@ -1,0 +1,7 @@
+PCNET BRIDGE V2.11 - RESUMO OPERACIONAL
+
+- O PCNet é exibido somente para login/reautenticação.
+- Assim que a sessão autenticada é detectada, o Bridge devolve o foco ao Nexus e oculta a aba PCNet automaticamente.
+- Busca de FAV, movimentação, criação de FAV de amostra, Coleta e Acondicionamento continuam operando em segundo plano.
+- Na UX normal do Nexus há apenas os estados “PCNet conectado” e “PCNet não conectado”.
+- Quando desconectado, o único controle exibido é “Conectar PCNet”.

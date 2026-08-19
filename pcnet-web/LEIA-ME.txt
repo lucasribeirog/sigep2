@@ -1,99 +1,77 @@
-NEXUS V15 - LAUDOS PERICIAIS / TEMPLATES FLEXIVEIS
-==================================================
+NEXUS V17.10.1 - LAUDOS + PCNET BRIDGE V2.11
+==========================================
 
-1. OBJETIVO
------------
-A V15 mantém o Nexus focado na geração de laudos e torna a relação entre formulário e template DOCX muito mais flexível.
+VERSAO LIMPA
+A V17.9 mantém a arquitetura sem automação nativa de teclado e acrescenta o fluxo automático de Coleta/Acondicionamento. A base removeu a arquitetura experimental de janela auxiliar/Win32 usada durante o
+diagnostico da criacao de FAV de amostra. O Bridge agora trabalha com a MESMA aba
+PCNet que o usuario ja autenticou. Essa aba permanece oculta enquanto o Nexus opera.
 
-O fluxo permanece:
-1) exporte o DOCX-base no PCNet;
-2) selecione esse arquivo no Nexus;
-3) selecione uma espécie ativa com template válido;
-4) preencha o formulário;
-5) o Nexus preenche o template e o junta ao DOCX-base a partir de HISTÓRICO;
-6) baixe DOCX ou PDF.
+FLUXOS MANTIDOS
+- geracao/mesclagem de laudos;
+- Balistica e Patrimonio com movimentacao integrada;
+- Drogas nao fragmentadas com movimentacao integrada;
+- verificacao CL/AC antes de Sob Custodia;
+- protecao contra movimentacao duplicada.
 
-Não existe automação de login no PCNet, Seg.ID, CAPTCHA ou movimentação de FAV.
+DROGAS FRAGMENTADAS
+1. O Nexus extrai a FAV original e o numero curto do laudo no PCNet.
+2. O Bridge usa a mesma aba PCNet autenticada e oculta.
+3. No MAIN world chama o comando real da Pesquisa de Laudo:
+   redirectajaxPCnet('/LAUDOSPERICIAIS/acessarprocedimentolaudopericiaissel.do?evento=F9-Pesquisar')
+4. Pesquisa o laudo e abre a linha correta.
+5. No MAIN world executa:
+   mudaMenu('/APP')
+   expandeMenu('#Bens Materiais')
+   redirectajaxCnet('/PCnet/acessarbemmaterialsel.do?evento=F9-Pesquisar&janelaModal=N')
+6. O fluxo somente prossegue quando existe exatamente a tela com:
+   #botao_menu[value="Novo Bem Material"]
+7. Abre Novo Bem Material, preenche o lacre da amostra e Informacao Adicional, salva
+   e tenta capturar a nova FAV automaticamente.
+8. fav_amostra e preenchida no formulario do laudo.
 
-2. ANALISADOR DE TEMPLATE
--------------------------
-Ao enviar um template em Administração > Espécies e templates, o Nexus analisa o DOCX e registra um manifesto contendo:
-- variáveis simples {campo};
-- condições {#condicao}, {^condicao} e fechamentos;
-- imagens dinâmicas {%imagem};
-- erros de estrutura das condições;
-- campos e condições extras que não pertencem ao formulário-padrão;
-- recursos que merecem conferência, como numeração, gráficos e comentários;
-- hash SHA-256 do arquivo.
+NAO EXISTE MAIS NO FLUXO NORMAL
+- nova janela Firefox;
+- Ctrl+F2 sintetico;
+- Ctrl+F2 via SendInput;
+- PowerShell/user32.dll para a criacao da FAV;
+- dependencia de ESCONDER/MOSTRAR para chegar a Bens Materiais.
 
-Templates estruturalmente inválidos são rejeitados. Templates com recursos que exigem atenção podem ser cadastrados, mas ficam marcados como ATENÇÃO.
+INSTALACAO
+1. Extraia em uma pasta nova.
+2. Se estiver migrando uma instalacao, copie seu .env e backend/database.sqlite.
+3. Execute SETUP.ps1.
+4. Inicie backend e frontend.
+5. Firefox > about:debugging#/runtime/this-firefox > carregar extensao temporaria.
+6. Selecione pcnet-bridge-firefox/manifest.json.
+7. Recarregue PCNet e Nexus.
 
-Campos simples e condições extras detectados no DOCX são apresentados automaticamente no formulário como campos genéricos. Imagens dinâmicas personalizadas continuam exigindo configuração específica.
+A extensao e temporaria no Firefox e precisa ser carregada novamente apos reinicio completo do navegador.
 
-3. TEMPLATES REAIS AJUSTADOS
-----------------------------
-A pasta backend/templates_padrao contém versões revisadas dos três modelos fornecidos:
-- balistica.docx
-- drogas.docx
-- eficiencia_objeto.docx
 
-Ajustes mínimos foram feitos apenas onde a lógica do formulário precisava permitir ausência legítima de informação:
-- Balística: bloco condicional para lacre opcional no encaminhamento.
-- Drogas: trecho "de coloração" só aparece quando há cor/aspecto informado.
-- Patrimônio/Eficiência: bloco condicional para lacre opcional no encaminhamento.
 
-4. FORMULÁRIOS
---------------
-Balística:
-- tipo e resultado são validados em conjunto;
-- "não calçou" só é compatível com pistola e o texto usa "unidade pericial" em vez de uma sigla fixa;
-- "rajada" não é compatível com revólver;
-- fuzil possui campo próprio de detalhes;
-- campos específicos de revólver, pistola, carabina, fuzil e munição são validados pelo backend;
-- lacre é opcional.
+V17.9 — UX DE MOVIMENTAÇÃO PCNET
+---------------------------------
+No fluxo de drogas fragmentadas, a interface foi reduzida a uma ação principal: “Movimentar FAV”.
+Ao confirmar uma única vez, o Nexus:
+1. busca e movimenta a FAV original/restante para Exame Pericial usando o lacre de encaminhamento;
+2. continua mesmo se essa etapa falhar;
+3. cria a FAV da amostra apenas se ela ainda não existir;
+4. registra/valida Coleta e Acondicionamento da amostra;
+5. apresenta, ao final, um resumo individual de sucesso, falha ou pendência de cada etapa.
 
-Drogas:
-- cocaína exige cor/aspecto; maconha pode omitir;
-- FAV principal é extraída do DOCX-base quando possível e pode ser digitada como fallback;
-- encaminhamento unificado exige o envelope de encaminhamento/guarda;
-- encaminhamento fragmentado exige FAV e massa da amostra, lacre da amostra e lacre do restante.
+Em nova tentativa, etapas já concluídas são reaproveitadas e as proteções contra duplicidade continuam ativas.
 
-Patrimônio/Eficiência:
-- madeira usa seção, duas dimensões da seção, comprimento total e massa;
-- unidade de custódia vem do catálogo administrativo;
-- FAV é extraída do DOCX-base quando possível e pode ser informada manualmente;
-- lacre é opcional.
+V17.8 — DROGAS FRAGMENTADAS / CL + AC
+- A unidade cadastrada do usuário é enviada ao Bridge.
+- Após criar/capturar a FAV da amostra, o Nexus registra automaticamente Coleta e Acondicionamento conforme o fluxo validado no PCNet.
+- A amostra criada durante o exame não recebe movimentação para finalidade Exame Pericial; o restante mantém seu fluxo próprio.
 
-5. MESCLAGEM COM O DOCX DO PCNET
---------------------------------
-O conteúdo do DOCX-base anterior a HISTÓRICO é preservado. A parte técnica do template preenchido substitui o conteúdo a partir de HISTÓRICO.
 
-A V15 também importa relacionamentos usados pelo corpo do template, tipos de conteúdo e estilos que não existam no documento-base. Isso reduz perda de formatação em templates personalizados.
-
-Se HISTÓRICO não for encontrado, o template é anexado ao final e o Nexus avisa para conferência.
-
-6. ATUALIZAÇÃO A PARTIR DA V14
-------------------------------
-Copie apenas:
-  .env
-  backend/database.sqlite
-
-para a pasta V15 e execute:
-  .\SETUP.ps1
-
-O setup cria backup do banco antes da migração.
-
-Templates personalizados não são substituídos automaticamente. A atualização automática só ocorre quando o hash do template ativo é exatamente igual ao modelo original fornecido e conhecido pela V15; a versão anterior permanece no histórico.
-
-7. EXECUÇÃO
------------
-Terminal 1:
-  cd backend
-  npm run dev
-
-Terminal 2:
-  cd frontend
-  npm run dev
-
-Abra:
-  http://localhost:5173
+V17.10.1 — PCNET SEMPRE EM SEGUNDO PLANO
+----------------------------------------
+- O Nexus mostra apenas o estado “PCNet conectado” ou “PCNet não conectado”.
+- Quando desconectado, aparece somente “Conectar PCNet”.
+- Ao clicar, a aba PCNet é exibida para login/reautenticação.
+- Assim que o Bridge detecta uma sessão autenticada, ele devolve o foco ao Nexus e oculta automaticamente a aba PCNet.
+- Durante buscas, movimentações, criação de FAV, Coleta e Acondicionamento, as superfícies PCNet permanecem ocultas.
+- Os comandos SHOW_PCNET/HIDE_PCNET permanecem internamente por compatibilidade/diagnóstico, mas não fazem parte da UX normal.
