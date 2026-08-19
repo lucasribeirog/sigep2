@@ -5,6 +5,8 @@ services:
     plan: free
     region: virginia
 
+    rootDir: pcnet-web
+
     healthCheckPath: /health
 
     envVars:
