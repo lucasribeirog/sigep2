@@ -28,14 +28,18 @@ RUN apt-get update && \
         python3 \
         make \
         g++ \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/package*.json ./
 
-RUN npm ci --omit=dev
+# Instala normalmente e depois recompila o sqlite3
+# dentro do Debian Bookworm, evitando incompatibilidade
+# do binário prebuilt com a versão da GLIBC.
+RUN npm ci --omit=dev && \
+    npm rebuild sqlite3 --build-from-source
 
 COPY backend/ ./
-
 
 # ============================================================
 # NEXUS RUNTIME
