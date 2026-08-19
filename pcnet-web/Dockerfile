@@ -61,53 +61,52 @@ RUN apt-get update && \
         fonts-crosextra-caladea \
     && rm -rf /var/lib/apt/lists/*
 
-
 # ============================================================
-# SUBSTITUICAO DE FONTES DO MICROSOFT NO LIBREOFFICE
+# SUBSTITUICAO DE FONTES DO MICROSOFT
 # ============================================================
 
 RUN printf '%s\n' \
 '<?xml version="1.0"?>' \
 '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">' \
 '<fontconfig>' \
-'  <match target="pattern">' \
-'    <test qual="any" name="family">' \
-'      <string>Times New Roman</string>' \
-'    </test>' \
-'    <edit name="family" mode="prepend" binding="strong">' \
-'      <string>Liberation Serif</string>' \
-'    </edit>' \
-'  </match>' \
+'  <alias>' \
+'    <family>Times New Roman</family>' \
+'    <prefer>' \
+'      <family>Liberation Serif</family>' \
+'    </prefer>' \
+'  </alias>' \
 '' \
-'  <match target="pattern">' \
-'    <test qual="any" name="family">' \
-'      <string>Calibri</string>' \
-'    </test>' \
-'    <edit name="family" mode="prepend" binding="strong">' \
-'      <string>Carlito</string>' \
-'    </edit>' \
-'  </match>' \
+'  <alias>' \
+'    <family>Calibri</family>' \
+'    <prefer>' \
+'      <family>Carlito</family>' \
+'    </prefer>' \
+'  </alias>' \
 '' \
-'  <match target="pattern">' \
-'    <test qual="any" name="family">' \
-'      <string>Arial</string>' \
-'    </test>' \
-'    <edit name="family" mode="prepend" binding="strong">' \
-'      <string>Liberation Sans</string>' \
-'    </edit>' \
-'  </match>' \
+'  <alias>' \
+'    <family>Arial</family>' \
+'    <prefer>' \
+'      <family>Liberation Sans</family>' \
+'    </prefer>' \
+'  </alias>' \
 '' \
-'  <match target="pattern">' \
-'    <test qual="any" name="family">' \
-'      <string>Cambria</string>' \
-'    </test>' \
-'    <edit name="family" mode="prepend" binding="strong">' \
-'      <string>Caladea</string>' \
-'    </edit>' \
-'  </match>' \
+'  <alias>' \
+'    <family>Cambria</family>' \
+'    <prefer>' \
+'      <family>Caladea</family>' \
+'    </prefer>' \
+'  </alias>' \
 '</fontconfig>' \
 > /etc/fonts/local.conf && \
-fc-cache -f
+fc-cache -f -v
+
+# Verificacao do mapeamento durante o build
+RUN echo "===== FONTES NEXUS =====" && \
+    fc-match "Times New Roman" && \
+    fc-match "Times New Roman:style=Bold" && \
+    fc-match "Calibri" && \
+    fc-match "Arial" && \
+    fc-match "Cambria"
 
 
 # ============================================================
