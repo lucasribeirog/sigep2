@@ -114,10 +114,28 @@ RUN echo \
 # usamos a Times New Roman verdadeira instalada acima.
 # ------------------------------------------------------------
 
+# ------------------------------------------------------------
+# FONTCONFIG DO NEXUS
+#
+# Compatibilidade entre os nomes utilizados nos DOCX do PCNet
+# e as fontes disponíveis no Linux.
+#
+# Times-Roman -> Times New Roman
+# Calibri     -> Carlito
+# Cambria     -> Caladea
+# ------------------------------------------------------------
+
 RUN printf '%s\n' \
     '<?xml version="1.0"?>' \
     '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">' \
     '<fontconfig>' \
+    '' \
+    '  <alias binding="strong">' \
+    '    <family>Times-Roman</family>' \
+    '    <prefer>' \
+    '      <family>Times New Roman</family>' \
+    '    </prefer>' \
+    '  </alias>' \
     '' \
     '  <alias binding="strong">' \
     '    <family>Calibri</family>' \
@@ -157,6 +175,12 @@ RUN echo "==========================================" && \
     echo "        DIAGNÓSTICO DE FONTES NEXUS       " && \
     echo "==========================================" && \
     echo "" && \
+    echo "Times-Roman (fonte usada pelo DOCX PCNet):" && \
+    fc-match "Times-Roman" && \
+    echo "" && \
+    echo "Times-Roman Bold:" && \
+    fc-match "Times-Roman:style=Bold" && \
+    echo "" && \
     echo "Times New Roman:" && \
     fc-match "Times New Roman" && \
     echo "" && \
@@ -171,7 +195,6 @@ RUN echo "==========================================" && \
     echo "" && \
     echo "=========================================="
 
-
 # ------------------------------------------------------------
 # VALIDAÇÃO RÍGIDA
 #
@@ -179,13 +202,18 @@ RUN echo "==========================================" && \
 # termina com erro em vez de publicar um PDF com fonte errada.
 # ------------------------------------------------------------
 
-RUN fc-match -f '%{family}\n' \
-        "Times New Roman" \
+    RUN fc-match -f '%{family}\n' \
+        "Times-Roman" \
         | head -n 1 \
         | grep -qi "Times New Roman" \
     && \
     fc-match -f '%{family}\n' \
-        "Times New Roman:style=Bold" \
+        "Times-Roman:style=Bold" \
+        | head -n 1 \
+        | grep -qi "Times New Roman" \
+    && \
+    fc-match -f '%{family}\n' \
+        "Times New Roman" \
         | head -n 1 \
         | grep -qi "Times New Roman" \
     && \
@@ -195,7 +223,7 @@ RUN fc-match -f '%{family}\n' \
         | grep -qi "Carlito"
 
 
-# ============================================================
+    # ============================================================
 # APLICAÇÃO
 # ============================================================
 
