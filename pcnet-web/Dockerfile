@@ -7,16 +7,14 @@ FROM node:22-bookworm AS frontend-build
 WORKDIR /app/frontend
 
 COPY frontend/package*.json ./
-
 RUN npm ci
 
 COPY frontend/ ./
-
 RUN npm run build
 
 
 # ============================================================
-# BACKEND DEPENDENCIES
+# BACKEND BUILD
 # ============================================================
 
 FROM node:22-bookworm AS backend-build
@@ -32,9 +30,6 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend/package*.json ./
-
-# Dependencias de producao do backend.
-# O banco agora utiliza PostgreSQL via pacote pg.
 RUN npm ci --omit=dev
 
 COPY backend/ ./
@@ -46,6 +41,22 @@ COPY backend/ ./
 
 FROM node:22-bookworm-slim
 
+
+# ------------------------------------------------------------
+# HABILITAR CONTRIB
+#
+# ttf-mscorefonts-installer pertence ao repositório contrib.
+# ------------------------------------------------------------
+
+RUN sed -i \
+    's/Components: main/Components: main contrib/g' \
+    /etc/apt/sources.list.d/debian.sources
+
+
+# ------------------------------------------------------------
+# DEPENDÊNCIAS GERAIS + FONTES LIVRES
+# ------------------------------------------------------------
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -54,62 +65,138 @@ RUN apt-get update && \
         python3-numpy \
         python3-opencv \
         fontconfig \
+        debconf \
+        cabextract \
+        wget \
+        xfonts-utils \
         fonts-dejavu-core \
-        fonts-liberation2 \
+        fonts-liberation \
         fonts-crosextra-carlito \
         fonts-crosextra-caladea \
     && rm -rf /var/lib/apt/lists/*
 
-# ============================================================
-# SUBSTITUICAO DE FONTES DO MICROSOFT
-# ============================================================
+
+# ------------------------------------------------------------
+# MICROSOFT CORE FONTS
+#
+# Instala, entre outras:
+#
+# Times New Roman
+# Times New Roman Bold
+# Times New Roman Italic
+# Times New Roman Bold Italic
+# Arial
+# Courier New
+# etc.
+# ------------------------------------------------------------
+
+RUN echo \
+    "ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula select true" \
+    | debconf-set-selections && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ttf-mscorefonts-installer \
+    && fc-cache -f -v \
+    && rm -rf /var/lib/apt/lists/*
+
+
+# ------------------------------------------------------------
+# FONTCONFIG DO NEXUS
+#
+# O Microsoft Core Fonts não contém Calibri.
+#
+# Carlito é metricamente compatível com Calibri, portanto:
+#
+# Calibri -> Carlito
+# Cambria -> Caladea
+#
+# Times New Roman NÃO é substituída:
+# usamos a Times New Roman verdadeira instalada acima.
+# ------------------------------------------------------------
 
 RUN printf '%s\n' \
-'<?xml version="1.0"?>' \
-'<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">' \
-'<fontconfig>' \
-'  <alias>' \
-'    <family>Times New Roman</family>' \
-'    <prefer>' \
-'      <family>Liberation Serif</family>' \
-'    </prefer>' \
-'  </alias>' \
-'' \
-'  <alias>' \
-'    <family>Calibri</family>' \
-'    <prefer>' \
-'      <family>Carlito</family>' \
-'    </prefer>' \
-'  </alias>' \
-'' \
-'  <alias>' \
-'    <family>Arial</family>' \
-'    <prefer>' \
-'      <family>Liberation Sans</family>' \
-'    </prefer>' \
-'  </alias>' \
-'' \
-'  <alias>' \
-'    <family>Cambria</family>' \
-'    <prefer>' \
-'      <family>Caladea</family>' \
-'    </prefer>' \
-'  </alias>' \
-'</fontconfig>' \
-> /etc/fonts/local.conf && \
-fc-cache -f -v
+    '<?xml version="1.0"?>' \
+    '<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">' \
+    '<fontconfig>' \
+    '' \
+    '  <alias binding="strong">' \
+    '    <family>Calibri</family>' \
+    '    <prefer>' \
+    '      <family>Carlito</family>' \
+    '    </prefer>' \
+    '  </alias>' \
+    '' \
+    '  <alias binding="strong">' \
+    '    <family>Cambria</family>' \
+    '    <prefer>' \
+    '      <family>Caladea</family>' \
+    '    </prefer>' \
+    '  </alias>' \
+    '' \
+    '</fontconfig>' \
+    > /etc/fonts/conf.avail/99-nexus-fonts.conf && \
+    ln -sf \
+        /etc/fonts/conf.avail/99-nexus-fonts.conf \
+        /etc/fonts/conf.d/99-nexus-fonts.conf && \
+    fc-cache -f -v
 
-# Verificacao do mapeamento durante o build
-RUN echo "===== FONTES NEXUS =====" && \
+
+# ------------------------------------------------------------
+# TESTES OBRIGATÓRIOS
+#
+# O build NÃO DEVE continuar se:
+#
+# Times New Roman -> outra fonte
+# Calibri         -> outra fonte que não Carlito
+#
+# Assim evitamos novamente um deploy aparentemente correto
+# usando DejaVu silenciosamente.
+# ------------------------------------------------------------
+
+RUN echo "==========================================" && \
+    echo "        DIAGNÓSTICO DE FONTES NEXUS       " && \
+    echo "==========================================" && \
+    echo "" && \
+    echo "Times New Roman:" && \
     fc-match "Times New Roman" && \
+    echo "" && \
+    echo "Times New Roman Bold:" && \
     fc-match "Times New Roman:style=Bold" && \
+    echo "" && \
+    echo "Calibri:" && \
     fc-match "Calibri" && \
-    fc-match "Arial" && \
-    fc-match "Cambria"
+    echo "" && \
+    echo "Cambria:" && \
+    fc-match "Cambria" && \
+    echo "" && \
+    echo "=========================================="
+
+
+# ------------------------------------------------------------
+# VALIDAÇÃO RÍGIDA
+#
+# Se estas condições não forem satisfeitas, o Docker build
+# termina com erro em vez de publicar um PDF com fonte errada.
+# ------------------------------------------------------------
+
+RUN fc-match -f '%{family}\n' \
+        "Times New Roman" \
+        | head -n 1 \
+        | grep -qi "Times New Roman" \
+    && \
+    fc-match -f '%{family}\n' \
+        "Times New Roman:style=Bold" \
+        | head -n 1 \
+        | grep -qi "Times New Roman" \
+    && \
+    fc-match -f '%{family}\n' \
+        "Calibri" \
+        | head -n 1 \
+        | grep -qi "Carlito"
 
 
 # ============================================================
-# APPLICATION
+# APLICAÇÃO
 # ============================================================
 
 WORKDIR /app
@@ -123,16 +210,13 @@ COPY --from=frontend-build \
     ./frontend/dist
 
 
-# ============================================================
-# VALIDACAO DAS DEPENDENCIAS
-# ============================================================
+# ------------------------------------------------------------
+# SANITY CHECK DO POSTGRES
+# ------------------------------------------------------------
 
-RUN node -e "require('./backend/node_modules/pg'); console.log('pg OK')"
+RUN node -e \
+    "require('./backend/node_modules/pg'); console.log('pg OK')"
 
-
-# ============================================================
-# ENVIRONMENT
-# ============================================================
 
 ENV NODE_ENV=production
 ENV PYTHON_BIN=python3
