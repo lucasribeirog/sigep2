@@ -2,13 +2,14 @@ const PizZip = require('pizzip');
 const Docxtemplater = require('docxtemplater');
 const ImageModule = require('docxtemplater-image-module-free');
 const path = require('path');
-const { execFileSync } = require('child_process');
 const fs = require('fs');
 const sizeOf = require('image-size');
 const sharp = require('sharp');
 
 const { prepararVariaveis, analisarImagemPericial } = require('../services/laudoProcessor');
 const { extrairFavDoDocx, extrairNumeroLaudoDoDocx, extrairNumeroLaudoCompletoDoDocx, mesclarDocxBaseComTemplate } = require('../services/docxMergeService');
+const {executarNaFilaPdf,} = require('../services/pdfQueueService');
+const {converterDocxParaPdf,} = require('../services/libreOfficeService');
 const db = require('../config/database');
 const { get, all } = db.promises;
 
@@ -70,11 +71,6 @@ function renderizar(template, vars) {
   });
   doc.render(vars);
   return doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
-}
-function libreOffice() {
-  if (process.env.LIBREOFFICE_PATH && fs.existsSync(process.env.LIBREOFFICE_PATH)) return process.env.LIBREOFFICE_PATH;
-  if (process.platform === 'win32') return ['C:\\Program Files\\LibreOffice\\program\\soffice.exe', 'C:\\Program Files (x86)\\LibreOffice\\program\\soffice.exe'].find(fs.existsSync) || null;
-  return 'libreoffice';
 }
 async function resolverEspecie(body) {
   const id = Number(body?.especieId || body?.especie_id || 0);
@@ -189,15 +185,60 @@ async function gerarLaudo(req, res) {
 async function gerarLaudoPdf(req, res) {
   let fotoPath = null, docxPath = null, pdfPath = null;
   try {
-    const d = await prepararDocumento(req); fotoPath = d.fotoPath;
-    const lo = libreOffice();
-    if (!lo) return res.status(400).json({ erro: 'LibreOffice não encontrado. Instale-o ou configure LIBREOFFICE_PATH no .env.' });
-    const dir = path.resolve(__dirname, '../../temp'); fs.mkdirSync(dir, { recursive: true });
-    const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-    docxPath = path.join(dir, `laudo_${id}.docx`); pdfPath = path.join(dir, `laudo_${id}.pdf`);
-    fs.writeFileSync(docxPath, d.buffer);
-    execFileSync(lo, ['--headless', '--convert-to', 'pdf', '--outdir', dir, docxPath], { windowsHide: true, stdio: 'pipe', timeout: 120000 });
-    if (!fs.existsSync(pdfPath)) throw new Error('O LibreOffice não gerou o PDF esperado.');
+    const d = await prepararDocumento(req);
+    fotoPath = d.fotoPath;
+
+    const dir = path.resolve(
+      __dirname,
+      '../../temp'
+    );
+
+    fs.mkdirSync(
+      dir,
+      {
+        recursive: true,
+      }
+    );
+
+    const id =
+      `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+
+    docxPath =
+      path.join(
+        dir,
+        `laudo_${id}.docx`
+      );
+
+    fs.writeFileSync(
+      docxPath,
+      d.buffer
+    );
+
+
+    /*
+    * Somente a conversão pelo LibreOffice entra na fila.
+    *
+    * A preparação do DOCX já aconteceu normalmente acima.
+    *
+    * Se outro usuário estiver convertendo um PDF neste momento,
+    * esta Promise simplesmente aguarda sua vez.
+    */
+    pdfPath =
+      await executarNaFilaPdf(
+        () =>
+          converterDocxParaPdf(
+            docxPath,
+            dir
+          ),
+        `laudo_${id}.docx`
+      );
+
+
+    if (!fs.existsSync(pdfPath)) {
+      throw new Error(
+        'O LibreOffice não gerou o PDF esperado.'
+      );
+    }
     headersDiagnostico(res, d);
     res.setHeader('Content-Disposition', disposition(d.nomeOriginal.replace(/\.docx$/i, '.pdf')));
     res.setHeader('Content-Type', 'application/pdf');
