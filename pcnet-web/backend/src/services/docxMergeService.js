@@ -265,62 +265,511 @@ function mesclarTiposConteudo(zipBase, zipTemplate) {
   zipBase.file('[Content_Types].xml', serializer.serializeToString(base));
 }
 
-function mesclarDocxBaseComTemplate(baseBuffer, templatePreenchidoBuffer) {
-  const zipBase = new PizZip(baseBuffer);
-  const zipTemplate = new PizZip(templatePreenchidoBuffer);
-  const baseFile = zipBase.file('word/document.xml');
-  const tplFile = zipTemplate.file('word/document.xml');
-  if (!baseFile) throw new Error('O documento-base não possui a estrutura padrão word/document.xml.');
-  if (!tplFile) throw new Error('O template preenchido não possui a estrutura padrão word/document.xml.');
+function primeiroIndiceComMarcador(body, marcadores, inicio = 0) {
+  for (let i = Math.max(0, inicio); i < body.childNodes.length; i += 1) {
+    const node = body.childNodes[i];
 
-  let xmlTemplate = tplFile.asText();
-  xmlTemplate = copiarRelacionamentosUsados(zipBase, zipTemplate, xmlTemplate).xmlTemplate;
-  mesclarEstilosAusentes(zipBase, zipTemplate);
-  mesclarTiposConteudo(zipBase, zipTemplate);
+    if (!node || node.nodeName === 'w:sectPr') continue;
 
-  const parser = new DOMParser();
-  const serializer = new XMLSerializer();
-  const docBase = parser.parseFromString(baseFile.asText(), 'text/xml');
-  const docTpl = parser.parseFromString(xmlTemplate, 'text/xml');
-  const bodyBase = docBase.getElementsByTagName('w:body')[0];
-  const bodyTpl = docTpl.getElementsByTagName('w:body')[0];
-  if (!bodyBase || !bodyTpl) throw new Error('Não foi possível localizar o corpo dos documentos Word.');
+    const texto = textoNormalizado(node.textContent);
 
-  let corte = -1;
-  for (let i = 0; i < bodyBase.childNodes.length; i += 1) {
-    const node = bodyBase.childNodes[i];
-    if (textoNormalizado(node.textContent).includes('HISTORICO')) {
-      corte = i;
-      break;
+    if (!texto) continue;
+
+    if (marcadores.some((marcador) => texto.includes(marcador))) {
+      return i;
     }
   }
 
-  if (corte >= 0) {
-    const remover = [];
-    for (let i = corte; i < bodyBase.childNodes.length; i += 1) {
-      const node = bodyBase.childNodes[i];
-      if (node.nodeName !== 'w:sectPr') remover.push(node);
+  return -1;
+}
+
+
+/**
+ * Localiza com segurança onde termina o cabeçalho proveniente do PCNet
+ * e começa o conteúdo pericial que deve ser substituído pelo template.
+ *
+ * Ordem de confiança:
+ *
+ * 1. HISTÓRICO
+ * 2. outro título conhecido do corpo do laudo
+ * 3. após "LAUDO PERICIAL"
+ * 4. após Data/Hora do início do exame
+ *
+ * Se nada puder ser identificado, aborta a geração em vez de produzir
+ * silenciosamente um DOCX/PDF mesclado de maneira incorreta.
+ */
+function localizarPontoCorteDocumentoBase(bodyBase) {
+
+  // ==========================================================
+  // 1. REGRA PRINCIPAL DO NEXUS
+  // ==========================================================
+  //
+  // O documento proveniente do PCNet é preservado até o bloco
+  // que contém Data/Hora do início do exame.
+  //
+  // TUDO que estiver abaixo desse bloco pertence ao corpo do
+  // laudo e será substituído pelo template do NEXUS.
+  //
+  // Essa regra independe da existência de:
+  //
+  // - LAUDO PERICIAL
+  // - HISTÓRICO
+  // - OBJETIVO PERICIAL
+  // - qualquer outro capítulo
+  //
+  // ==========================================================
+
+  let ultimoCabecalho = -1;
+
+  for (
+    let i = 0;
+    i < bodyBase.childNodes.length;
+    i += 1
+  ) {
+
+    const node =
+      bodyBase.childNodes[i];
+
+    if (
+      !node ||
+      node.nodeName === 'w:sectPr'
+    ) {
+      continue;
     }
-    remover.forEach((n) => bodyBase.removeChild(n));
+
+
+    const texto =
+      textoNormalizado(
+        node.textContent
+      );
+
+
+    if (
+      texto.includes('DATA DO INICIO DO EXAME') ||
+      texto.includes('HORA DO INICIO DO EXAME')
+    ) {
+
+      ultimoCabecalho = i;
+    }
   }
+
+
+  if (ultimoCabecalho >= 0) {
+
+    /*
+     * +1 porque o próprio bloco Data/Hora deve permanecer.
+     *
+     * Portanto:
+     *
+     * CABEÇALHO PCNET
+     * ...
+     * Data/Hora do exame      <- preservado
+     * -------------------------------
+     * qualquer coisa abaixo   <- removida
+     * -------------------------------
+     * TEMPLATE NEXUS          <- inserido
+     */
+
+    return {
+      indice: ultimoCabecalho + 1,
+      estrategia: 'APOS_DATA_HORA_EXAME',
+
+      /*
+       * Mantemos a propriedade apenas por compatibilidade com
+       * o restante do sistema.
+       *
+       * A presença de HISTÓRICO deixa de determinar o ponto
+       * principal de mesclagem.
+       */
+      historicoDetectado:
+        primeiroIndiceComMarcador(
+          bodyBase,
+          ['HISTORICO']
+        ) >= 0,
+    };
+  }
+
+
+  // ==========================================================
+  // 2. FALLBACK: HISTÓRICO
+  // ==========================================================
+  //
+  // Apenas para algum DOCX antigo/atípico que não possua
+  // Data/Hora do início do exame.
+  // ==========================================================
+
+  const historico =
+    primeiroIndiceComMarcador(
+      bodyBase,
+      ['HISTORICO']
+    );
+
+
+  if (historico >= 0) {
+
+    return {
+      indice: historico,
+      estrategia: 'HISTORICO_FALLBACK',
+      historicoDetectado: true,
+    };
+  }
+
+
+  // ==========================================================
+  // 3. FALLBACK: LAUDO PERICIAL
+  // ==========================================================
+
+  const laudoPericial =
+    primeiroIndiceComMarcador(
+      bodyBase,
+      ['LAUDO PERICIAL']
+    );
+
+
+  if (laudoPericial >= 0) {
+
+    return {
+      indice: laudoPericial + 1,
+      estrategia: 'APOS_LAUDO_PERICIAL_FALLBACK',
+      historicoDetectado: false,
+    };
+  }
+
+
+  // ==========================================================
+  // 4. ÚLTIMO FALLBACK: PRIMEIRO TÍTULO DO CORPO
+  // ==========================================================
+
+  const marcadoresCorpo = [
+
+    'OBJETIVO PERICIAL',
+    'OBJETO PERICIAL',
+
+    'METODOS UTILIZADOS',
+    'METODO UTILIZADO',
+    'METODOLOGIA',
+
+    'TECNICAS UTILIZADAS',
+    'TECNICA UTILIZADA',
+
+    'MATERIAL EXAMINADO',
+    'MATERIAIS EXAMINADOS',
+
+    'EXAMES REALIZADOS',
+    'EXAME REALIZADO',
+
+    'RESULTADOS E CONCLUSAO DOS EXAMES',
+    'RESULTADOS DOS EXAMES',
+    'RESULTADOS',
+
+    'ENCAMINHAMENTO DO MATERIAL',
+    'ENCAMINHAMENTO DOS MATERIAIS',
+
+    'CONCLUSAO',
+
+    'CONSIDERACOES FINAIS',
+
+    'BIBLIOGRAFIA',
+    'REFERENCIAS BIBLIOGRAFICAS',
+  ];
+
+
+  const corpo =
+    primeiroIndiceComMarcador(
+      bodyBase,
+      marcadoresCorpo
+    );
+
+
+  if (corpo >= 0) {
+
+    return {
+      indice: corpo,
+      estrategia: 'PRIMEIRO_TITULO_CORPO_FALLBACK',
+      historicoDetectado: false,
+    };
+  }
+
+
+  // ==========================================================
+  // 5. SEGURANÇA
+  // ==========================================================
+
+  const erro =
+    new Error(
+      'Não foi possível identificar com segurança o ponto de ' +
+      'mesclagem do documento exportado pelo PCNet. Não foram ' +
+      'localizados os campos Data/Hora do início do exame nem ' +
+      'outro marcador estrutural reconhecido.'
+    );
+
+
+  erro.codigo =
+    'DOCX_PCNET_PONTO_MESCLAGEM_NAO_LOCALIZADO';
+
+
+  erro.statusCode =
+    422;
+
+
+  throw erro;
+}
+function mesclarDocxBaseComTemplate(
+  baseBuffer,
+  templatePreenchidoBuffer
+) {
+
+  const zipBase =
+    new PizZip(baseBuffer);
+
+  const zipTemplate =
+    new PizZip(templatePreenchidoBuffer);
+
+
+  const baseFile =
+    zipBase.file('word/document.xml');
+
+  const tplFile =
+    zipTemplate.file('word/document.xml');
+
+
+  if (!baseFile) {
+    throw new Error(
+      'O documento-base não possui a estrutura padrão word/document.xml.'
+    );
+  }
+
+  if (!tplFile) {
+    throw new Error(
+      'O template preenchido não possui a estrutura padrão word/document.xml.'
+    );
+  }
+
+
+  // ==========================================================
+  // PREPARAR RECURSOS DO TEMPLATE
+  // ==========================================================
+
+  let xmlTemplate =
+    tplFile.asText();
+
+
+  xmlTemplate =
+    copiarRelacionamentosUsados(
+      zipBase,
+      zipTemplate,
+      xmlTemplate
+    ).xmlTemplate;
+
+
+  mesclarEstilosAusentes(
+    zipBase,
+    zipTemplate
+  );
+
+
+  mesclarTiposConteudo(
+    zipBase,
+    zipTemplate
+  );
+
+
+  // ==========================================================
+  // ABRIR OS DOIS DOCUMENT.XML
+  // ==========================================================
+
+  const parser =
+    new DOMParser();
+
+  const serializer =
+    new XMLSerializer();
+
+
+  const docBase =
+    parser.parseFromString(
+      baseFile.asText(),
+      'text/xml'
+    );
+
+
+  const docTpl =
+    parser.parseFromString(
+      xmlTemplate,
+      'text/xml'
+    );
+
+
+  const bodyBase =
+    docBase.getElementsByTagName('w:body')[0];
+
+  const bodyTpl =
+    docTpl.getElementsByTagName('w:body')[0];
+
+
+  if (!bodyBase || !bodyTpl) {
+    throw new Error(
+      'Não foi possível localizar o corpo dos documentos Word.'
+    );
+  }
+
+
+  // ==========================================================
+  // LOCALIZAR PONTO DE MESCLAGEM
+  // ==========================================================
+
+  const pontoCorte =
+    localizarPontoCorteDocumentoBase(
+      bodyBase
+    );
+
+
+  const corte =
+    pontoCorte.indice;
+
+
+  // ==========================================================
+  // REMOVER CORPO ANTIGO DO PCNET
+  // ==========================================================
+  //
+  // Mantemos:
+  //
+  // - cabeçalho;
+  // - informações da requisição;
+  // - FAV;
+  // - envolvidos;
+  // - data/hora;
+  // - LAUDO PERICIAL, quando existente;
+  // - sectPr do documento-base.
+  //
+  // Removemos somente o corpo pericial antigo.
+  // ==========================================================
+
+  const remover = [];
+
+
+  for (
+    let i = corte;
+    i < bodyBase.childNodes.length;
+    i += 1
+  ) {
+
+    const node =
+      bodyBase.childNodes[i];
+
+
+    if (
+      node.nodeName !== 'w:sectPr'
+    ) {
+
+      remover.push(node);
+    }
+  }
+
+
+  remover.forEach(
+    (node) =>
+      bodyBase.removeChild(node)
+  );
+
+
+  // ==========================================================
+  // ELEMENTOS DO TEMPLATE
+  // ==========================================================
 
   const inserir = [];
-  for (let i = 0; i < bodyTpl.childNodes.length; i += 1) {
-    const node = bodyTpl.childNodes[i];
-    if (node.nodeName !== 'w:sectPr') inserir.push(node);
+
+
+  for (
+    let i = 0;
+    i < bodyTpl.childNodes.length;
+    i += 1
+  ) {
+
+    const node =
+      bodyTpl.childNodes[i];
+
+
+    /*
+     * A configuração de página permanece sendo a do documento
+     * original do PCNet.
+     */
+    if (
+      node.nodeName !== 'w:sectPr'
+    ) {
+
+      inserir.push(node);
+    }
   }
 
-  const sectPr = bodyBase.getElementsByTagName('w:sectPr')[0] || null;
+
+  // ==========================================================
+  // INSERIR TEMPLATE
+  // ==========================================================
+
+  const sectPr =
+    bodyBase.getElementsByTagName(
+      'w:sectPr'
+    )[0] || null;
+
+
   for (const node of inserir) {
-    const imported = docBase.importNode(node, true);
-    if (sectPr) bodyBase.insertBefore(imported, sectPr);
-    else bodyBase.appendChild(imported);
+
+    const imported =
+      docBase.importNode(
+        node,
+        true
+      );
+
+
+    if (sectPr) {
+
+      bodyBase.insertBefore(
+        imported,
+        sectPr
+      );
+
+    } else {
+
+      bodyBase.appendChild(
+        imported
+      );
+    }
   }
 
-  zipBase.file('word/document.xml', serializer.serializeToString(docBase));
+
+  // ==========================================================
+  // SALVAR DOCUMENT.XML
+  // ==========================================================
+
+  zipBase.file(
+    'word/document.xml',
+    serializer.serializeToString(
+      docBase
+    )
+  );
+
+
   return {
-    buffer: zipBase.generate({ type: 'nodebuffer', compression: 'DEFLATE' }),
-    historicoDetectado: corte >= 0,
+
+    buffer:
+      zipBase.generate({
+        type: 'nodebuffer',
+        compression: 'DEFLATE',
+      }),
+
+    /*
+     * Mantemos esta propriedade porque o restante do NEXUS
+     * já a utiliza.
+     */
+    historicoDetectado:
+      pontoCorte.historicoDetectado,
+
+    /*
+     * Nova informação diagnóstica.
+     * Não quebra consumidores antigos.
+     */
+    estrategiaMesclagem:
+      pontoCorte.estrategia,
   };
 }
 
