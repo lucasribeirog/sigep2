@@ -124,13 +124,21 @@ async function prepararDocumento(req) {
 
     const templatePreenchido = renderizar(tpl.arquivo, vars);
     const unificado = mesclarDocxBaseComTemplate(base.buffer, templatePreenchido);
+    if (
+      unificado.estrategiaMesclagem !==
+      'APOS_DATA_HORA_EXAME'
+    ) {
+      console.warn(
+        '[DOCX Merge] Estratégia alternativa utilizada:',
+        unificado.estrategiaMesclagem
+      );
+    }
     const original = path.basename(base.originalname || `Laudo_${esp.id}.docx`);
     return {
       buffer: unificado.buffer,
       especie: esp.nome_exibicao,
       fotoPath,
       favDetectada,
-      historicoDetectado: unificado.historicoDetectado,
       nomeOriginal: original.toLowerCase().endsWith('.docx') ? original : `${original}.docx`,
       templateStatus: tpl.status_template,
     };
@@ -141,10 +149,24 @@ async function prepararDocumento(req) {
 }
 
 function headersDiagnostico(res, d) {
-  res.setHeader('Access-Control-Expose-Headers', 'x-fav-detectada,x-nexus-historico-detectado,x-nexus-template-status');
-  if (d.favDetectada) res.setHeader('x-fav-detectada', String(d.favDetectada));
-  res.setHeader('x-nexus-historico-detectado', d.historicoDetectado ? '1' : '0');
-  if (d.templateStatus) res.setHeader('x-nexus-template-status', d.templateStatus);
+  res.setHeader(
+    'Access-Control-Expose-Headers',
+    'x-fav-detectada,x-nexus-template-status'
+  );
+
+  if (d.favDetectada) {
+    res.setHeader(
+      'x-fav-detectada',
+      String(d.favDetectada)
+    );
+  }
+
+  if (d.templateStatus) {
+    res.setHeader(
+      'x-nexus-template-status',
+      d.templateStatus
+    );
+  }
 }
 
 async function inspecionarDocxPcnet(req, res) {

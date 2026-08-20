@@ -373,19 +373,6 @@ function localizarPontoCorteDocumentoBase(bodyBase) {
     return {
       indice: ultimoCabecalho + 1,
       estrategia: 'APOS_DATA_HORA_EXAME',
-
-      /*
-       * Mantemos a propriedade apenas por compatibilidade com
-       * o restante do sistema.
-       *
-       * A presença de HISTÓRICO deixa de determinar o ponto
-       * principal de mesclagem.
-       */
-      historicoDetectado:
-        primeiroIndiceComMarcador(
-          bodyBase,
-          ['HISTORICO']
-        ) >= 0,
     };
   }
 
@@ -410,7 +397,6 @@ function localizarPontoCorteDocumentoBase(bodyBase) {
     return {
       indice: historico,
       estrategia: 'HISTORICO_FALLBACK',
-      historicoDetectado: true,
     };
   }
 
@@ -431,7 +417,6 @@ function localizarPontoCorteDocumentoBase(bodyBase) {
     return {
       indice: laudoPericial + 1,
       estrategia: 'APOS_LAUDO_PERICIAL_FALLBACK',
-      historicoDetectado: false,
     };
   }
 
@@ -486,7 +471,6 @@ function localizarPontoCorteDocumentoBase(bodyBase) {
     return {
       indice: corpo,
       estrategia: 'PRIMEIRO_TITULO_CORPO_FALLBACK',
-      historicoDetectado: false,
     };
   }
 
@@ -756,13 +740,6 @@ function mesclarDocxBaseComTemplate(
         type: 'nodebuffer',
         compression: 'DEFLATE',
       }),
-
-    /*
-     * Mantemos esta propriedade porque o restante do NEXUS
-     * já a utiliza.
-     */
-    historicoDetectado:
-      pontoCorte.historicoDetectado,
 
     /*
      * Nova informação diagnóstica.
