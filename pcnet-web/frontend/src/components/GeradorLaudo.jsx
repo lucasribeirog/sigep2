@@ -128,7 +128,18 @@ export default function GeradorLaudo({ catalogo = [], especieInicialId = null, d
 
     try {
       setLoading(true);
-      const r = await api.post(formato === 'pdf' ? '/gerar-laudo-pdf' : '/gerar-laudo', fd, { responseType: 'blob' });
+      const r = await api.post(
+        formato === 'pdf'
+          ? '/gerar-laudo-pdf'
+          : '/gerar-laudo',
+        fd,
+        {
+          responseType: 'blob',
+          ...(formato === 'pdf'
+            ? { timeout: 90000 }
+            : {}),
+        }
+      );
       const ext = formato === 'pdf' ? 'pdf' : 'docx';
       const url = URL.createObjectURL(r.data);
       const a = document.createElement('a'); a.href = url; a.download = nomeSaida(arquivoPcnet, ext, especie);
