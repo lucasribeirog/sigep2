@@ -1,14 +1,33 @@
-NEXUS PCNET BRIDGE V2.11
-Versão da extensão: 0.2.11.0
+NEXUS PCNET BRIDGE V2.16.0
 
-COMPORTAMENTO
-- Clique em “Conectar PCNet” apenas quando a sessão não estiver autenticada.
-- Faça o login normalmente.
-- Ao detectar a autenticação, a extensão retorna ao Nexus e oculta a aba PCNet.
-- Durante as operações do Nexus, o PCNet permanece em segundo plano.
+Base: V2.15.0 validada.
 
+NOVO NA V2.16.0
+- comando LISTAR_ACEITE;
+- abre/reconhece Requisição Pericial/Parecer pelo Menu Rápido do PCNet;
+- executa somente Limpar + F9-Pesquisar;
+- obtém o CSV nativo do PCNet diretamente em memória;
+- decodifica o CSV em Windows-1252;
+- converte a lista para JSON e devolve ao Nexus;
+- NÃO aceita, recebe, devolve ou modifica requisições;
+- NÃO grava dados de aceite no banco, storage ou localStorage;
+- bloqueia LISTAR_ACEITE enquanto outra automação Nexus estiver usando a aba PCNet.
 
-V2.11 — ABA GERENCIADA
-- O Bridge controla e oculta somente a aba raiz criada/adotada pelo botão Conectar PCNet.
-- Abas PCNet abertas manualmente pelo usuário nunca são auto-ocultadas.
-- Operações auxiliares só consideram abas/popups descendentes da aba raiz gerenciada.
+PRESERVADO DA V2.15.0
+- retries seguros de Cadeia de Custódia e pesquisa de Laudos;
+- fluxos validados de FAV, amostra, coleta e acondicionamento;
+- aba PCNet gerenciada/oculta;
+- atualização automática pelo update_url após assinatura Mozilla.
+
+TESTE LOCAL
+1. Desative temporariamente a V2.15 instalada.
+2. Abra about:debugging#/runtime/this-firefox.
+3. Clique em "Carregar extensão temporária".
+4. Selecione o manifest.json desta pasta bridge-source.
+5. Abra o Nexus e conecte o PCNet.
+6. Execute no Console da página Nexus o teste descrito no README principal do pacote.
+
+IMPORTANTE
+Firefox de distribuição normal exige assinatura Mozilla para instalação permanente.
+Após validar a V2.16, envie a nova versão ao portal Mozilla mantendo o mesmo ID:
+nexus-pcnet-bridge@local

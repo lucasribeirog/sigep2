@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.2.11.0';
+  const VERSION = '0.2.27.0';
   const SOURCE_APP = 'NEXUS_APP';
   const SOURCE_BRIDGE = 'NEXUS_PCNET_BRIDGE';
 

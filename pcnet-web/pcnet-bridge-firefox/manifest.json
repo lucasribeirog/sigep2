@@ -1,24 +1,32 @@
 {
   "manifest_version": 3,
   "name": "Nexus PCNet Bridge",
-  "version": "0.2.11.0",
-  "description": "Bridge local do Nexus: mantém somente a aba PCNet gerenciada pelo Nexus oculta após autenticação; abas PCNet abertas manualmente permanecem livres.",
+  "version": "0.2.27.0",
+  "description": "Bridge do Nexus para PCNet: sessão gerenciada, automações de FAV, consulta e ações do Aceite, download de anexos e visualização de BO/REDS.",
   "browser_specific_settings": {
     "gecko": {
       "id": "nexus-pcnet-bridge@local",
-      "strict_min_version": "115.0"
+      "strict_min_version": "115.0",
+      "update_url": "https://nexus-laudos-dev.onrender.com/downloads/pcnet-bridge-updates.json",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
     }
   },
   "permissions": [
     "tabs",
     "tabHide",
     "storage",
-    "scripting"
+    "scripting",
+    "downloads"
   ],
   "host_permissions": [
     "https://*.pcnet.mg.gov.br/*",
     "http://localhost/*",
-    "http://127.0.0.1/*"
+    "http://127.0.0.1/*",
+    "https://nexus-laudos-dev.onrender.com/*"
   ],
   "background": {
     "scripts": [
@@ -44,7 +52,8 @@
     {
       "matches": [
         "http://localhost/*",
-        "http://127.0.0.1/*"
+        "http://127.0.0.1/*",
+        "https://nexus-laudos-dev.onrender.com/*"
       ],
       "js": [
         "content-nexus.js"

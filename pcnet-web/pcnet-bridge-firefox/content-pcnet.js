@@ -1,5 +1,5 @@
 (() => {
-  const VERSION = '0.2.11.0';
+  const VERSION = '0.2.27.0';
   let ultimoResumo = '';
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -37,6 +37,11 @@
     const temNovoBem = Boolean(botaoNovoBem);
     return {
       cadeiaCustodia: Boolean(document.querySelector('img[src*="ico_cadeia_custodia.png"]')),
+      aceiteRequisicoes: Boolean(
+        document.querySelector('form[name="aceitefatolaudosForm"]')
+        && document.querySelector('#btnPesquisar')
+        && document.querySelector('#btVerRequisicao')
+      ),
       favInput: Boolean(document.querySelector('#numeroDaFAV_Arg')),
       favPesquisar: Boolean(document.querySelector('#btnPesquisar')),
       favLimpar: Boolean(document.querySelector('#btnLimpar')),
@@ -221,7 +226,7 @@
     const btnLimpar = document.querySelector('#btnLimpar');
     if (btnLimpar) {
       clicar(btnLimpar);
-      await sleep(450);
+      await sleep(800);
     }
 
     input = document.querySelector('#numeroDaFAV_Arg');
@@ -315,6 +320,285 @@
     }
   }
 
+
+  function selecionarValor(el, valor) {
+    if (!el) return false;
+    try {
+      const proto = Object.getPrototypeOf(el);
+      const descriptor = Object.getOwnPropertyDescriptor(proto, 'value')
+        || Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+      if (descriptor?.set) descriptor.set.call(el, String(valor));
+      else el.value = String(valor);
+
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    } catch {
+      try {
+        el.value = String(valor);
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  async function aguardarMudancaEstavelDom(disparar, {
+    timeoutMs = 10000,
+    quietMs = 450,
+    minimoMs = 250
+  } = {}) {
+    return new Promise((resolve) => {
+      let terminou = false;
+      let viuMudanca = false;
+      let timerQuieto = null;
+      let timerTimeout = null;
+      const inicio = Date.now();
+
+      const finalizar = (motivo) => {
+        if (terminou) return;
+        terminou = true;
+        if (timerQuieto) clearTimeout(timerQuieto);
+        if (timerTimeout) clearTimeout(timerTimeout);
+        try { observer.disconnect(); } catch {}
+        resolve({
+          ok: true,
+          motivo,
+          viuMudanca,
+          duracaoMs: Date.now() - inicio
+        });
+      };
+
+      const agendarQuieto = () => {
+        if (timerQuieto) clearTimeout(timerQuieto);
+        timerQuieto = setTimeout(() => {
+          if (Date.now() - inicio >= minimoMs) finalizar('dom_estavel');
+          else agendarQuieto();
+        }, quietMs);
+      };
+
+      const observer = new MutationObserver(() => {
+        viuMudanca = true;
+        agendarQuieto();
+      });
+
+      try {
+        if (document.body) {
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+            attributes: true
+          });
+        }
+      } catch {}
+
+      timerTimeout = setTimeout(() => finalizar('timeout'), timeoutMs);
+
+      Promise.resolve()
+        .then(disparar)
+        .then(() => {
+          // Caso a tela já estivesse no estado desejado e não haja mutação,
+          // não esperamos o timeout completo.
+          setTimeout(() => {
+            if (!viuMudanca && !terminou) finalizar('sem_mutacao');
+          }, 900);
+        })
+        .catch(() => finalizar('disparo_falhou'));
+    });
+  }
+
+  async function abrirListaAceite() {
+    if (document.querySelector('form[name="aceitefatolaudosForm"]')) {
+      return {
+        ok: true,
+        codigo: 'ACEITE_LISTA_JA_ABERTA',
+        metodo: 'formulario_presente'
+      };
+    }
+
+    const menu = document.querySelector('#menuRapido');
+    if (!menu) {
+      return {
+        ok: false,
+        codigo: 'MENU_RAPIDO_NAO_ENCONTRADO'
+      };
+    }
+
+    const opcoes = Array.from(menu.options || []);
+    const opcao = opcoes.find((option) => {
+      const valor = String(option.value || '');
+      const texto = normalizar(option.textContent || option.innerText || '');
+      return /carregaMenu=2103(?:&|&amp;|$)/i.test(valor)
+        || /requisi[cç][aã]o\s+pericial\s*\/\s*parecer/i.test(texto);
+    });
+
+    if (!opcao?.value) {
+      return {
+        ok: false,
+        codigo: 'OPCAO_ACEITE_NAO_ENCONTRADA'
+      };
+    }
+
+    const valor = opcao.value;
+    const alterado = selecionarValor(menu, valor);
+
+    return {
+      ok: alterado,
+      codigo: alterado
+        ? 'ACEITE_LISTA_NAVEGACAO_ENVIADA'
+        : 'ACEITE_LISTA_NAVEGACAO_FALHOU',
+      metodo: 'menu_rapido',
+      valor
+    };
+  }
+
+  function parseCsvSeparado(texto, separador = ';') {
+    const linhas = [];
+    let linha = [];
+    let campo = '';
+    let entreAspas = false;
+
+    for (let i = 0; i < texto.length; i += 1) {
+      const ch = texto[i];
+
+      if (ch === '"') {
+        if (entreAspas && texto[i + 1] === '"') {
+          campo += '"';
+          i += 1;
+        } else {
+          entreAspas = !entreAspas;
+        }
+        continue;
+      }
+
+      if (ch === separador && !entreAspas) {
+        linha.push(campo);
+        campo = '';
+        continue;
+      }
+
+      if ((ch === '\n' || ch === '\r') && !entreAspas) {
+        if (ch === '\r' && texto[i + 1] === '\n') i += 1;
+
+        linha.push(campo);
+
+        if (linha.some((valor) => String(valor || '').trim() !== '')) {
+          linhas.push(linha);
+        }
+
+        linha = [];
+        campo = '';
+        continue;
+      }
+
+      campo += ch;
+    }
+
+    if (campo.length || linha.length) {
+      linha.push(campo);
+      if (linha.some((valor) => String(valor || '').trim() !== '')) {
+        linhas.push(linha);
+      }
+    }
+
+    return linhas;
+  }
+
+  function converterCsvAceiteParaObjetos(texto) {
+    const limpo = String(texto || '').replace(/^\uFEFF/, '');
+    const linhas = parseCsvSeparado(limpo, ';');
+
+    if (!linhas.length) return [];
+
+    return linhas
+      .slice(1)
+      .map((colunas) => ({
+        requisicao: String(colunas[0] || '').trim(),
+        procedimentoOrigem: String(colunas[1] || '').trim(),
+        situacao: String(colunas[2] || '').trim(),
+        tipo: String(colunas[3] || '').trim(),
+        natureza: String(colunas[4] || '').trim(),
+        unidadeOrigem: String(colunas[5] || '').trim(),
+        dataHora: String(colunas[6] || '').trim(),
+        especieExame: String(colunas[7] || '').trim(),
+        fav: String(colunas[8] || '').trim()
+      }))
+      .filter((item) => Boolean(item.requisicao));
+  }
+
+  async function listarAceiteCsv() {
+    if (!document.querySelector('form[name="aceitefatolaudosForm"]')) {
+      return {
+        ok: false,
+        codigo: 'TELA_ACEITE_NAO_ENCONTRADA'
+      };
+    }
+
+    // Esta V2.16 é SOMENTE LEITURA para Aceite.
+    // Limpar/F9 alteram apenas a pesquisa exibida; não modificam requisições.
+    let btnLimpar = document.querySelector('#btnLimpar');
+    if (btnLimpar) {
+      await aguardarMudancaEstavelDom(
+        () => clicar(btnLimpar),
+        { timeoutMs: 7000, quietMs: 450, minimoMs: 250 }
+      );
+    }
+
+    let btnPesquisar = document.querySelector('#btnPesquisar');
+    if (!btnPesquisar) {
+      return {
+        ok: false,
+        codigo: 'BOTAO_PESQUISAR_ACEITE_NAO_ENCONTRADO'
+      };
+    }
+
+    await aguardarMudancaEstavelDom(
+      () => clicar(btnPesquisar),
+      { timeoutMs: 12000, quietMs: 550, minimoMs: 350 }
+    );
+
+    const response = await fetch(
+      '/LAUDOSPERICIAIS/aceitefatolaudossel.do?evento=exportarCSV',
+      {
+        credentials: 'include',
+        cache: 'no-store'
+      }
+    );
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        codigo: 'CSV_ACEITE_HTTP_ERRO',
+        statusHttp: response.status
+      };
+    }
+
+    const tipo = String(response.headers.get('content-type') || '');
+    const buffer = await response.arrayBuffer();
+    const texto = new TextDecoder('windows-1252').decode(buffer);
+
+    if (!/N[ºo°]\s*Requisi[cç][aã]o/i.test(texto.slice(0, 300))) {
+      return {
+        ok: false,
+        codigo: 'CSV_ACEITE_CONTEUDO_INESPERADO',
+        contentType: tipo
+      };
+    }
+
+    const itens = converterCsvAceiteParaObjetos(texto);
+
+    return {
+      ok: true,
+      codigo: 'ACEITE_LISTADO',
+      total: itens.length,
+      itens,
+      atualizadoEm: Date.now(),
+      contentType: tipo
+    };
+  }
+
   async function buscarFav(numeroFav, selecionar = true) {
     let input = document.querySelector('#numeroDaFAV_Arg');
     let btnPesquisar = document.querySelector('#btnPesquisar');
@@ -325,7 +609,7 @@
     const numeroOriginal = String(numeroFav ?? '').trim();
     const numeroCanonico = canonicalizarNumeroFav(numeroOriginal);
 
-    async function pesquisarUmaVez(valorPesquisa, timeoutMs = 9000) {
+    async function pesquisarUmaVez(valorPesquisa, timeoutMs = 12000) {
       const limpeza = await limparPesquisaFav();
       if (!limpeza?.ok) return { erroLimpeza: limpeza };
 
@@ -347,16 +631,28 @@
       return { achado: null, limpeza };
     }
 
-    let tentativa = await pesquisarUmaVez(numeroOriginal);
+    let tentativa = await pesquisarUmaVez(numeroOriginal, 12000);
     if (tentativa?.erroLimpeza) return tentativa.erroLimpeza;
     if (tentativa?.erroTela) return tentativa.erroTela;
 
     // Alguns formulários do PCNet aceitam a FAV com zeros à esquerda, mas a
     // consulta de custódia pode pesquisar pelo valor numérico sem esses zeros.
-    // Só fazemos a segunda tentativa quando necessário e quando os valores
-    // realmente diferem.
+    // Só fazemos a tentativa canônica quando os valores realmente diferem.
     if (!tentativa.achado && numeroCanonico && numeroCanonico !== numeroOriginal.replace(/\D/g, '')) {
-      tentativa = await pesquisarUmaVez(numeroCanonico);
+      tentativa = await pesquisarUmaVez(numeroCanonico, 12000);
+      if (tentativa?.erroLimpeza) return tentativa.erroLimpeza;
+      if (tentativa?.erroTela) return tentativa.erroTela;
+    }
+
+    // A primeira consulta após abrir/recarregar a Cadeia de Custódia pode ser
+    // ignorada pelo PCNet enquanto o AJAX anterior ainda termina. Como pesquisar
+    // é uma operação somente de leitura, repetimos internamente uma única vez
+    // antes de informar FAV não encontrada. Isso elimina a necessidade de o
+    // usuário clicar em "Movimentar FAV" pela segunda vez.
+    if (!tentativa.achado) {
+      await sleep(600);
+      const valorRetry = numeroCanonico || numeroOriginal;
+      tentativa = await pesquisarUmaVez(valorRetry, 15000);
       if (tentativa?.erroLimpeza) return tentativa.erroLimpeza;
       if (tentativa?.erroTela) return tentativa.erroTela;
     }
@@ -1015,6 +1311,10 @@
         return { ok: true, codigo: 'PROBE', analise: analisar() };
       case 'OPEN_ACCEPTANCE':
         return tentarAbrirAceite();
+      case 'OPEN_ACCEPTANCE_LIST':
+        return abrirListaAceite();
+      case 'LIST_ACCEPTANCE':
+        return listarAceiteCsv();
       case 'GET_CUSTODY_TARGET':
         return obterAlvoCadeiaCustodia();
       case 'SEARCH_FAV':

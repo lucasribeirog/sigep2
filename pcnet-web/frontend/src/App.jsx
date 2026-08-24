@@ -5,7 +5,7 @@ import Login from './components/Login';
 import GeradorLaudo from './components/GeradorLaudo';
 import AdminPanel from './components/AdminPanel';
 import MinhaConta from './components/MinhaConta';
-
+import AceitePcnet from './components/AceitePcnet';
 import api from './api/api';
 
 
@@ -460,6 +460,24 @@ export default function App() {
                     📄 Laudos
                 </button>
 
+                <button
+                    onClick={() =>
+                        setAba('aceite')
+                    }
+                    className={`
+                        py-3
+                        border-b-2
+
+                        ${
+                            aba === 'aceite'
+                                ? 'border-sky-600 text-sky-700'
+                                : 'border-transparent'
+                        }
+                    `}
+                >
+                    📥 Aceite
+                </button>
+
 
                 {/* =============================================
                     MINHA CONTA
@@ -729,6 +747,17 @@ export default function App() {
                     )
                 }
 
+                {/* =============================================
+                    ACEITE PCNET
+                    ============================================= */}
+
+                {
+                    aba === 'aceite' && (
+
+                        <AceitePcnet />
+
+                    )
+                }
 
                 {/* =============================================
                     MINHA CONTA
