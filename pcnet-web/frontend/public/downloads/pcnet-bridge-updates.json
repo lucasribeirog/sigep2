@@ -3,7 +3,7 @@
     "nexus-pcnet-bridge@local": {
       "updates": [
         {
-          "version": "0.2.15.0",
+          "version": "0.2.28.0",
           "update_link": "https://nexus-laudos-dev.onrender.com/downloads/nexus-pcnet-bridge.xpi",
           "applications": {
             "gecko": {
