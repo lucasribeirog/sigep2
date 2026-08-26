@@ -32,7 +32,7 @@ const FORM_INICIAL = {
   numero_laudo_pcnet: '', numero_laudo_completo: '', pcnet_movimentacoes: {}, pcnet_amostra_criada: null,
 };
 
-export default function GeradorLaudo({ catalogo = [], especieInicialId = null, dadosIniciaisIA = null, fotoObjetoInicial = null, usuario = null }) {
+export default function GeradorLaudo({ catalogo = [], especieInicialId = null, dadosIniciaisIA = null, fotoObjetoInicial = null, usuario = null, arquivoPcnetInicial = null, contextoPcnetInicial = null }) {
   const [especieId, setEspecieId] = useState(especieInicialId || '');
   const [arquivoPcnet, setArquivoPcnet] = useState(null);
   const [fotoObjeto, setFotoObjeto] = useState(fotoObjetoInicial || null);
@@ -41,6 +41,7 @@ export default function GeradorLaudo({ catalogo = [], especieInicialId = null, d
   const [aviso, setAviso] = useState('');
   const [unidades, setUnidades] = useState([]);
   const formRef = useRef(null);
+  const arquivoInicialProcessadoRef = useRef('');
 
   const [form, setForm] = useState(() => ({
     ...FORM_INICIAL,
@@ -98,6 +99,21 @@ export default function GeradorLaudo({ catalogo = [], especieInicialId = null, d
     }
   }
 
+  useEffect(() => {
+    if (!arquivoPcnetInicial) return;
+    const chave = [
+      arquivoPcnetInicial.name || '',
+      arquivoPcnetInicial.size || 0,
+      arquivoPcnetInicial.lastModified || 0,
+      contextoPcnetInicial?.requisicao || ''
+    ].join('|');
+    if (arquivoInicialProcessadoRef.current === chave) return;
+    arquivoInicialProcessadoRef.current = chave;
+    escolherPcnet(arquivoPcnetInicial).catch(e => {
+      console.error('Nexus: falha ao importar DOCX-base recebido do Bridge:', e);
+    });
+  }, [arquivoPcnetInicial, contextoPcnetInicial?.requisicao]);
+
   async function analisarFoto() {
     if (!fotoObjeto || !especie || !suportaIA) return;
     const fd = new FormData();
@@ -128,18 +144,7 @@ export default function GeradorLaudo({ catalogo = [], especieInicialId = null, d
 
     try {
       setLoading(true);
-      const r = await api.post(
-        formato === 'pdf'
-          ? '/gerar-laudo-pdf'
-          : '/gerar-laudo',
-        fd,
-        {
-          responseType: 'blob',
-          ...(formato === 'pdf'
-            ? { timeout: 90000 }
-            : {}),
-        }
-      );
+      const r = await api.post(formato === 'pdf' ? '/gerar-laudo-pdf' : '/gerar-laudo', fd, { responseType: 'blob' });
       const ext = formato === 'pdf' ? 'pdf' : 'docx';
       const url = URL.createObjectURL(r.data);
       const a = document.createElement('a'); a.href = url; a.download = nomeSaida(arquivoPcnet, ext, especie);
@@ -164,6 +169,22 @@ export default function GeradorLaudo({ catalogo = [], especieInicialId = null, d
       <h2 className="text-2xl font-bold text-gray-800">Elaboração e Emissão de Laudos</h2>
       <p className="text-sm text-gray-500 mt-1">O DOCX-base do PCNet fornece a capa/identificação. A partir de “HISTÓRICO”, o Nexus usa o template ativo da espécie.</p>
     </div>
+
+    {contextoPcnetInicial?.origem === 'ACEITE_PCNET' && <section className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+      <div className="flex items-start gap-3">
+        <div className="text-xl">✓</div>
+        <div className="min-w-0">
+          <div className="font-bold text-emerald-900">Requisição importada diretamente do PCNet</div>
+          <div className="text-sm text-emerald-800 mt-1">
+            Requisição <b>{contextoPcnetInicial.requisicao}</b>
+            {contextoPcnetInicial.especiePcnet ? <> · Espécie PCNet: <b>{contextoPcnetInicial.especiePcnet}</b></> : null}
+          </div>
+          {contextoPcnetInicial.modeloSelecionado?.nome && <div className="text-xs text-emerald-700 mt-1">
+            DOCX-base: {contextoPcnetInicial.modeloSelecionado.nome} · {contextoPcnetInicial.criterioSelecao === 'MODELO_EM_BRANCO' ? 'modelo em branco preferido' : 'primeiro modelo disponível'}
+          </div>}
+        </div>
+      </div>
+    </section>}
 
     <form ref={formRef} onSubmit={e => e.preventDefault()} className="space-y-6">
       <section className="rounded-xl border border-sky-200 bg-sky-50 p-5">

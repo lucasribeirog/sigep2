@@ -55,7 +55,23 @@ function textoErro(error) {
     DETALHE_ACEITE_NAO_ESTA_ABERTO: 'A tela da requisição não está mais aberta no PCNet. Volte à caixa e abra a requisição novamente.',
     CLICK_ACAO_ACEITE_FALHOU: 'O botão nativo do PCNet foi localizado, mas o clique falhou.',
     PCNET_RECUSOU_ACAO_ACEITE: error?.message || 'O PCNet recusou a operação.',
-    ACAO_ACEITE_RESULTADO_INDETERMINADO: 'O PCNet recebeu o comando, mas o resultado não pôde ser confirmado. A ação não será repetida automaticamente. Atualize a caixa antes de tentar novamente.'
+    ACAO_ACEITE_RESULTADO_INDETERMINADO: 'O PCNet recebeu o comando, mas o resultado não pôde ser confirmado. A ação não será repetida automaticamente. Atualize a caixa antes de tentar novamente.',
+    REQUISICAO_LAUDO_OBRIGATORIA: 'Informe a requisição que será usada para elaborar o laudo.',
+    PREPARAR_LAUDO_JA_EM_ANDAMENTO: 'A preparação deste laudo já está em andamento. Aguarde a conclusão.',
+    REQUISICAO_ACEITA_NAO_ENCONTRADA: 'A requisição não foi encontrada no CTRL+F2. Confirme se ela já foi aceita e tente novamente.',
+    CELULA_ABRIR_REQUISICAO_LAUDO_NAO_ENCONTRADA: 'A requisição apareceu no CTRL+F2, mas o controle nativo para abri-la não foi localizado.',
+    REQUISICAO_ACEITA_NAO_ABRIU: 'A requisição foi acionada no CTRL+F2, mas a tela de Dados Básicos não abriu a tempo.',
+    TELA_PESQUISA_LAUDO_NAO_ENCONTRADA: 'A Pesquisa de Laudo/Parecer do CTRL+F2 não ficou pronta.',
+    MENU_LAUDO_PARECER_NAO_ENCONTRADO: 'O menu “Laudo pericial/Parecer” não foi localizado na requisição.',
+    ELABORAR_LAUDO_MENU_NAO_ENCONTRADO: 'O submenu “Elaborar Laudo/Parecer” não foi localizado.',
+    TELA_ELABORAR_LAUDO_TIMEOUT: 'O PCNet não abriu a tela de elaboração com os modelos disponíveis a tempo.',
+    TELA_MODELOS_LAUDO_NAO_ENCONTRADA: 'A tela de modelos de laudo não foi localizada.',
+    MODELOS_LAUDO_NAO_LOCALIZADOS: 'O PCNet não apresentou nenhum modelo Word para esta espécie.',
+    DOWNLOAD_TEMPLATE_PCNET_FALHOU: 'Falha ao solicitar o modelo Word ao PCNet.',
+    DOWNLOAD_TEMPLATE_PCNET_HTTP_ERRO: 'O PCNet recusou a exportação do modelo Word.',
+    DOWNLOAD_TEMPLATE_PCNET_NAO_E_DOCX: 'A resposta do PCNet não corresponde a um arquivo DOCX válido.',
+    DOWNLOAD_TEMPLATE_PCNET_MUITO_GRANDE: 'O DOCX retornado pelo PCNet excede o limite aceito pelo Bridge.',
+    OBTER_TEMPLATE_PCNET_FALHOU: 'Não foi possível obter o DOCX-base do PCNet.'
   };
   return mapa[codigo] || error?.message || error?.erro || 'Não foi possível consultar o PCNet.';
 }
@@ -174,7 +190,7 @@ function extrairOcorrencias(resposta) {
   return [...encontrados.values()];
 }
 
-export default function AceitePcnet() {
+export default function AceitePcnet({ onElaborarLaudo = null }) {
   const [bridgeDetectado, setBridgeDetectado] = useState(true);
   const [conectado, setConectado] = useState(false);
   const [carregando, setCarregando] = useState(true);
@@ -199,6 +215,8 @@ export default function AceitePcnet() {
   const [modalAcao, setModalAcao] = useState(null);
   const [justificativaAcao, setJustificativaAcao] = useState('');
   const [acaoEmAndamento, setAcaoEmAndamento] = useState('');
+  const [preparandoLaudo, setPreparandoLaudo] = useState(false);
+  const [aceitaNestaSessao, setAceitaNestaSessao] = useState(false);
 
 
   async function consultarStatus() {
@@ -341,6 +359,7 @@ export default function AceitePcnet() {
   }
 
   function abrirRequisicao(item) {
+    setAceitaNestaSessao(normalizar(item?.situacao).includes('aceita'));
     setRequisicaoAberta(item);
     carregarDetalhes(item);
   }
@@ -352,6 +371,69 @@ export default function AceitePcnet() {
     setCodigoErroDetalhes('');
     setErroAcao('');
     setSucessoAcao('');
+    setAceitaNestaSessao(false);
+  }
+
+  function arquivoBase64ParaFile(arquivo) {
+    if (!arquivo?.base64) throw new Error('O Bridge não retornou o conteúdo do DOCX-base.');
+    const binario = atob(arquivo.base64);
+    const bytes = new Uint8Array(binario.length);
+    for (let i = 0; i < binario.length; i += 1) bytes[i] = binario.charCodeAt(i);
+    return new File(
+      [bytes],
+      arquivo.nome || 'modelo_pcnet.docx',
+      { type: arquivo.mime || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }
+    );
+  }
+
+  async function prepararLaudoNoPcnet() {
+    if (!requisicaoAberta?.requisicao || preparandoLaudo) return;
+    if (typeof onElaborarLaudo !== 'function') {
+      setErroAcao('A integração com o Gerador de Laudos não está disponível nesta tela.');
+      return;
+    }
+
+    setPreparandoLaudo(true);
+    setErroAcao('');
+    setSucessoAcao('');
+    try {
+      const resposta = await pcnetBridgeRequest(
+        'PREPARAR_LAUDO_PCNET',
+        { requisicao: requisicaoAberta.requisicao },
+        90000
+      );
+      if (resposta?.erro) {
+        const falha = new Error(resposta.erro);
+        falha.codigo = resposta?.erroCodigo || null;
+        falha.diagnostico = resposta?.diagnostico || null;
+        throw falha;
+      }
+      if (resposta?.status !== 'SUCESSO' || !resposta?.arquivo?.base64) {
+        const falha = new Error('O Bridge não confirmou a obtenção do DOCX-base do PCNet.');
+        falha.codigo = 'OBTER_TEMPLATE_PCNET_FALHOU';
+        throw falha;
+      }
+
+      const file = arquivoBase64ParaFile(resposta.arquivo);
+      const contexto = {
+        origem: 'ACEITE_PCNET',
+        requisicao: requisicaoAberta.requisicao,
+        item: { ...requisicaoAberta },
+        detalhes: detalhesRequisicao,
+        especiePcnet: resposta.especiePcnet || requisicaoAberta.especieExame || '',
+        arquivoPcnet: file,
+        modeloSelecionado: resposta.modeloSelecionado || null,
+        criterioSelecao: resposta.criterioSelecao || null,
+        modelosDisponiveis: resposta.modelos || []
+      };
+      setSucessoAcao(resposta?.mensagem || 'DOCX-base obtido do PCNet. Abrindo o Gerador de Laudos...');
+      onElaborarLaudo(contexto);
+    } catch (e) {
+      console.error('ERRO PREPARAR_LAUDO_PCNET:', e);
+      setErroAcao(textoErro(e));
+    } finally {
+      setPreparandoLaudo(false);
+    }
   }
 
   async function baixarDocumento(documento) {
@@ -465,17 +547,26 @@ export default function AceitePcnet() {
         throw falha;
       }
 
+      const acaoConcluida = modalAcao.acao;
       const mensagem = resposta?.mensagem || `${modalAcao.titulo} realizado com sucesso.`;
       setSucessoAcao(mensagem);
       setModalAcao(null);
       setJustificativaAcao('');
 
-      // Volta para a caixa e recarrega o estado real do PCNet.
-      setRequisicaoAberta(null);
-      setDetalhesRequisicao(null);
-      setErroDetalhes('');
-      setCodigoErroDetalhes('');
-      await carregar();
+      if (acaoConcluida === 'ACEITAR') {
+        // Após o aceite, a requisição sai da caixa do CTRL+F1 e passa ao fluxo do
+        // CTRL+F2. Mantemos o cartão aberto localmente para permitir “Elaborar laudo”
+        // imediatamente, sem obrigar o usuário a procurar a requisição novamente.
+        setAceitaNestaSessao(true);
+        setRequisicaoAberta(v => v ? { ...v, situacao: 'Aceita' } : v);
+      } else {
+        // As demais ações retornam à caixa e recarregam o estado real do PCNet.
+        setRequisicaoAberta(null);
+        setDetalhesRequisicao(null);
+        setErroDetalhes('');
+        setCodigoErroDetalhes('');
+        await carregar();
+      }
     } catch (e) {
       setErroAcao(textoErro(e));
     } finally {
@@ -675,6 +766,37 @@ export default function AceitePcnet() {
               </button>
             </div>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-sky-50 p-6 shadow-sm">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 shrink-0 rounded-xl bg-white border border-indigo-100 flex items-center justify-center text-2xl">📝</div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Elaborar laudo no Nexus</h3>
+                <p className="text-sm text-gray-600 mt-1 max-w-2xl">
+                  O Bridge pesquisa esta requisição no CTRL+F2, abre <b>Laudo pericial/Parecer → Elaborar Laudo/Parecer</b>,
+                  escolhe “MODELO EM BRANCO” quando houver (senão o primeiro modelo disponível) e importa o DOCX-base diretamente para o Gerador.
+                </p>
+                <div className="mt-2 text-xs text-indigo-700">
+                  Espécie PCNet: <b>{item.especieExame || 'será identificada no PCNet'}</b>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={prepararLaudoNoPcnet}
+              disabled={preparandoLaudo || Boolean(acaoEmAndamento) || !detalhesRequisicao || (!aceitaNestaSessao && !normalizar(item.situacao).includes('aceita'))}
+              className="shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-xl font-bold text-sm shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {preparandoLaudo ? 'Preparando no PCNet...' : (!aceitaNestaSessao && !normalizar(item.situacao).includes('aceita') ? 'Aceite a requisição primeiro' : '📝 Elaborar laudo')}
+            </button>
+          </div>
+          {!aceitaNestaSessao && !normalizar(item.situacao).includes('aceita') && (
+            <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Esta operação só encontrará a requisição no CTRL+F2 depois que ela estiver aceita no PCNet.
+            </div>
+          )}
         </section>
 
         <section className="bg-white border rounded-2xl shadow-sm overflow-hidden">
