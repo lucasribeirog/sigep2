@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 
 const SOURCE_APP = 'NEXUS_APP';
 const SOURCE_BRIDGE = 'NEXUS_PCNET_BRIDGE';
-const BRIDGE_XPI_URL = '/downloads/nexus-pcnet-bridge.xpi';
+const BRIDGE_XPI_URL = '/downloads/a2df77bb3c9b496fb386-0.2.28.0.xpi';
 
 export default function PcnetBridgeStatus() {
   const [bridge, setBridge] = useState('checking');
