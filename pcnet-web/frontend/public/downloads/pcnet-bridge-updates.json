@@ -4,7 +4,7 @@
       "updates": [
         {
           "version": "0.2.28.0",
-          "update_link": "https://nexus-laudos-dev.onrender.com/downloads/nexus-pcnet-bridge.xpi",
+          "update_link": "https://nexus-laudos-dev.onrender.com/downloads/a2df77bb3c9b496fb386-0.2.28.0.xpi",
           "applications": {
             "gecko": {
               "strict_min_version": "115.0"
